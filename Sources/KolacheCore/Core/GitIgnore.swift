@@ -1,0 +1,72 @@
+import Foundation
+
+public enum GitIgnore {
+    public static func write(to directory: URL) throws {
+        let content = """
+        # Xcode
+        .DS_Store
+        */xcuserdata/
+        *.xcscmblueprint
+        *.xccheckout
+        DerivedData/
+        *.moved-aside
+        *.pbxuser
+        !default.pbxuser
+        *.mode1v3
+        !default.mode1v3
+        *.mode2v3
+        !default.mode2v3
+        *.perspectivev3
+        !default.perspectivev3
+        xcuserdata/
+
+        # Swift Package Manager
+        .build/
+        .swiftpm/
+        *.resolved
+
+        # CocoaPods (if ever used)
+        Pods/
+
+        # Carthage (if ever used)
+        Carthage/Build/
+
+        # fastlane
+        fastlane/report.xml
+        fastlane/Preview.html
+        fastlane/screenshots/**/*.png
+        fastlane/test_output
+
+        # App packaging
+        *.ipa
+        *.dSYM.zip
+        *.dSYM
+
+        # Playgrounds
+        timeline.xctimeline
+        playground.xcworkspace
+
+        # Xcode Automatic Signing
+        *.mobileprovision
+
+        # macOS
+        .DS_Store
+        .AppleDouble
+        .LSOverride
+        ._*
+        .Spotlight-V100
+        .Trashes
+
+        # VS Code / Cursor
+        .vscode/
+        .cursor/
+
+        # Environment
+        .env
+        .env.local
+        """
+
+        let url = directory.appendingPathComponent(".gitignore")
+        try content.write(to: url, atomically: true, encoding: .utf8)
+    }
+}

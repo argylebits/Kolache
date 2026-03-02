@@ -3,22 +3,23 @@ import PackageDescription
 
 let package = Package(
     name: "Kolache",
-    platforms: [
-        .macOS(.v15),
-    ],
+    platforms: [.macOS(.v15)],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
     ],
     targets: [
+        .target(name: "KolacheCore"),
         .executableTarget(
-            name: "Kolache",
+            name: "kolache",
             dependencies: [
+                "KolacheCore",
                 .product(name: "ArgumentParser", package: "swift-argument-parser"),
-            ]
+            ],
+            path: "Sources/KolacheCLI"
         ),
         .testTarget(
-            name: "KolacheTests",
-            dependencies: ["Kolache"]
+            name: "KolacheCoreTests",
+            dependencies: ["KolacheCore"]
         ),
     ]
 )

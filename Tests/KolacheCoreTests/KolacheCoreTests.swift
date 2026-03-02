@@ -1,8 +1,8 @@
 import Testing
-@testable import Kolache
+@testable import KolacheCore
 
-@Suite("Kolache Tests")
-struct KolacheTests {
+@Suite("KolacheCore Tests")
+struct KolacheCoreTests {
     @Test("Example test")
     func example() async throws {
         // Add your tests here
