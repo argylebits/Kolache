@@ -292,14 +292,7 @@ struct Init: ParsableCommand {
         let manifest = KolacheProject(
             projectName: projectName,
             flags: flags,
-            templateRepo: config.templateRepo,
-            templateVersion: "local",
-            createdAt: ISO8601DateFormatter().string(from: Date()),
-            managedFiles: [
-                ".gitignore",
-                ".kolache.json",
-                "README.md",
-            ]
+            createdAt: ISO8601DateFormatter().string(from: Date())
         )
         try manifest.save(to: directory)
     }

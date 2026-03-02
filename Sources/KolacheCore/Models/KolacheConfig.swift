@@ -4,8 +4,6 @@ import Foundation
 public struct KolacheConfig: Codable, Sendable {
     public var orgName: String
     public var bundleIdPrefix: String
-    public var templateRepo: String
-    public var githubToken: String?
 
     public static let configDir = URL(fileURLWithPath: NSHomeDirectory())
         .appendingPathComponent(".kolache")
@@ -45,18 +43,9 @@ public struct KolacheConfig: Codable, Sendable {
         print("Bundle ID prefix (e.g. com.yourname): ", terminator: "")
         let bundleIdPrefix = readLine()?.trimmingCharacters(in: .whitespaces) ?? "com.example"
 
-        print("Template repo URL (e.g. github.com/you/kolache-templates): ", terminator: "")
-        let templateRepo = readLine()?.trimmingCharacters(in: .whitespaces) ?? ""
-
-        print("GitHub token (leave blank if repo is public): ", terminator: "")
-        let tokenInput = readLine()?.trimmingCharacters(in: .whitespaces) ?? ""
-        let githubToken = tokenInput.isEmpty ? nil : tokenInput
-
         let config = KolacheConfig(
             orgName: orgName,
-            bundleIdPrefix: bundleIdPrefix,
-            templateRepo: templateRepo,
-            githubToken: githubToken
+            bundleIdPrefix: bundleIdPrefix
         )
         try config.save()
 

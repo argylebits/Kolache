@@ -22,7 +22,5 @@ struct Config: ParsableCommand {
         print("")
         print("  orgName:         \(config.orgName)")
         print("  bundleIdPrefix:  \(config.bundleIdPrefix)")
-        print("  templateRepo:    \(config.templateRepo)")
-        print("  githubToken:     \(config.githubToken != nil ? "set" : "not set")")
     }
 }

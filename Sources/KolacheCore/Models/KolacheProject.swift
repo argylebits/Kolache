@@ -1,38 +1,23 @@
 import Foundation
 
 /// Per-project manifest written to .kolache.json at the project root.
-/// Records what kolache created so update and migrate know what they own.
+/// Records what kolache created and which flags were used.
 public struct KolacheProject: Codable, Sendable {
     public var version: String = "1.0"
     public var projectName: String
     public var flags: [String]
-    public var templateRepo: String
-    public var templateVersion: String
     public var createdAt: String
-    public var managedFiles: [String]
 
     public static let filename = ".kolache.json"
 
     public init(
         projectName: String,
         flags: [String],
-        templateRepo: String,
-        templateVersion: String,
-        createdAt: String,
-        managedFiles: [String]
+        createdAt: String
     ) {
         self.projectName = projectName
         self.flags = flags
-        self.templateRepo = templateRepo
-        self.templateVersion = templateVersion
         self.createdAt = createdAt
-        self.managedFiles = managedFiles
-    }
-
-    public static func load(from directory: URL) throws -> KolacheProject {
-        let url = directory.appendingPathComponent(filename)
-        let data = try Data(contentsOf: url)
-        return try JSONDecoder().decode(KolacheProject.self, from: data)
     }
 
     public func save(to directory: URL) throws {
