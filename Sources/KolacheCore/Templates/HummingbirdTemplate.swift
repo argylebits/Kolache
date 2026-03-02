@@ -19,10 +19,13 @@ public struct HummingbirdTemplate {
 
         let sourcesDir = projectDir.appendingPathComponent("Sources/\(targetName)")
         let testsDir = projectDir.appendingPathComponent("Tests/\(targetName)Tests")
+        let githubDir = projectDir.appendingPathComponent(".github/workflows")
 
         try fm.createDirectory(at: sourcesDir, withIntermediateDirectories: true)
         try fm.createDirectory(at: testsDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: githubDir, withIntermediateDirectories: true)
 
+        // Source files
         try appSwift.write(
             to: sourcesDir.appendingPathComponent("App.swift"),
             atomically: true, encoding: .utf8
@@ -31,13 +34,31 @@ public struct HummingbirdTemplate {
             to: sourcesDir.appendingPathComponent("App+build.swift"),
             atomically: true, encoding: .utf8
         )
+
+        // Tests
         try testsSwift.write(
             to: testsDir.appendingPathComponent("\(targetName)Tests.swift"),
             atomically: true, encoding: .utf8
         )
+
+        // Docker
+        try dockerfile.write(
+            to: projectDir.appendingPathComponent("Dockerfile"),
+            atomically: true, encoding: .utf8
+        )
+        try dockerignore.write(
+            to: projectDir.appendingPathComponent(".dockerignore"),
+            atomically: true, encoding: .utf8
+        )
+
+        // CI
+        try ciYML.write(
+            to: githubDir.appendingPathComponent("ci.yml"),
+            atomically: true, encoding: .utf8
+        )
     }
 
-    // MARK: - File Contents
+    // MARK: - Swift Source Files
 
     private var appSwift: String {
         """
@@ -113,6 +134,8 @@ public struct HummingbirdTemplate {
         """
     }
 
+    // MARK: - Tests
+
     private var testsSwift: String {
         """
         import Configuration
@@ -124,8 +147,8 @@ public struct HummingbirdTemplate {
 
         private let reader = ConfigReader(providers: [
             InMemoryProvider(values: [
-                "host": "127.0.0.1",
-                "port": "0",
+                "http.host": "127.0.0.1",
+                "http.port": "0",
                 "log.level": "trace",
             ]),
         ])
@@ -142,6 +165,136 @@ public struct HummingbirdTemplate {
                 }
             }
         }
+        """
+    }
+
+    // MARK: - Dockerfile
+
+    private var dockerfile: String {
+        """
+        # ================================
+        # Build image
+        # ================================
+        FROM swift:6.2-noble AS build
+
+        # Install OS updates
+        RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \\
+            && apt-get -q update \\
+            && apt-get -q dist-upgrade -y \\
+            && apt-get install -y libjemalloc-dev \\
+            && rm -rf /var/lib/apt/lists/*
+
+        # Set up a build area
+        WORKDIR /build
+
+        # First just resolve dependencies.
+        # This creates a cached layer that can be reused
+        # as long as your Package.swift/Package.resolved
+        # files do not change.
+        COPY ./Package.* ./
+        RUN swift package resolve
+
+        # Copy entire repo into container
+        COPY . .
+
+        # Build the application, with optimizations, with static linking, and using jemalloc
+        RUN swift build -c release \\
+            --static-swift-stdlib \\
+            -Xlinker -ljemalloc
+
+        # Switch to the staging area
+        WORKDIR /staging
+
+        # Copy main executable to staging area
+        RUN cp "$(swift build --package-path /build -c release --show-bin-path)/\(targetName)" ./
+
+        # Copy static swift backtracer binary to staging area
+        RUN cp "/usr/libexec/swift/linux/swift-backtrace-static" ./
+
+        # Copy resources bundled by SPM to staging area
+        RUN find -L "$(swift build --package-path /build -c release --show-bin-path)/" -regex '.*\\.resources$' -exec cp -Ra {} ./ \\;
+
+        # Copy any resources from the public directory if it exists
+        RUN [ -d /build/public ] && { mv /build/public ./public && chmod -R a-w ./public; } || true
+
+        # ================================
+        # Run image
+        # ================================
+        FROM ubuntu:noble
+
+        # Make sure all system packages are up to date, and install only essential packages.
+        RUN export DEBIAN_FRONTEND=noninteractive DEBCONF_NONINTERACTIVE_SEEN=true \\
+            && apt-get -q update \\
+            && apt-get -q dist-upgrade -y \\
+            && apt-get -q install -y \\
+              libjemalloc2 \\
+              ca-certificates \\
+              tzdata \\
+            && rm -r /var/lib/apt/lists/*
+
+        # Create a hummingbird user and group with /app as its home directory
+        RUN useradd --user-group --create-home --system --skel /dev/null --home-dir /app hummingbird
+
+        # Switch to the new home directory
+        WORKDIR /app
+
+        # Copy built executable and any staged resources from builder
+        COPY --from=build --chown=hummingbird:hummingbird /staging /app
+
+        # Provide configuration needed by the built-in crash reporter and some sensible default behaviors.
+        ENV SWIFT_BACKTRACE=enable=yes,sanitize=yes,threads=all,images=all,interactive=no,swift-backtrace=./swift-backtrace-static
+
+        # Ensure all further commands run as the hummingbird user
+        USER hummingbird:hummingbird
+
+        # Let Docker bind to port 8080
+        EXPOSE 8080
+
+        # Start the Hummingbird service when the image is run, default to listening on 8080 in production environment
+        ENTRYPOINT ["./\(targetName)"]
+        CMD ["--http-host", "0.0.0.0", "--http-port", "8080"]
+        """
+    }
+
+    // MARK: - .dockerignore
+
+    private var dockerignore: String {
+        """
+        .build
+        .git
+        """
+    }
+
+    // MARK: - GitHub Actions CI
+
+    private var ciYML: String {
+        """
+        name: CI
+
+        on:
+          push:
+            branches:
+            - main
+            paths:
+            - '**.swift'
+            - '**.yml'
+          pull_request:
+          workflow_dispatch:
+
+        jobs:
+          linux:
+            runs-on: ubuntu-latest
+            strategy:
+              matrix:
+                image:
+                  - 'swift:latest'
+            container:
+              image: ${{ matrix.image }}
+            steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+            - name: Test
+              run: swift test
         """
     }
 }
