@@ -12,8 +12,6 @@ struct Kolache: ParsableCommand {
             """,
         subcommands: [
             Init.self,
-            Update.self,
-            List.self,
             Config.self,
         ],
         defaultSubcommand: nil
