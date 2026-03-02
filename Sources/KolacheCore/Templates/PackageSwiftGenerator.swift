@@ -173,116 +173,93 @@ public struct PackageSwiftGenerator {
     private var multiTargetPackage: String {
         let coreName = "\(projectName)Core"
 
-        var deps: [String] = []
-        var targets: [String] = []
+        var lines: [String] = []
+        lines.append("// swift-tools-version: 6.2")
+        lines.append("import PackageDescription")
+        lines.append("")
+        lines.append("let package = Package(")
+        lines.append("    name: \"\(projectName)\",")
 
-        // Core library target — always present in multi-target
-        targets.append("""
-                .target(
-                    name: "\(coreName)"
-                ),
-        """)
+        // Platforms
+        if hummingbird {
+            lines.append("    platforms: [")
+            lines.append("        .macOS(.v15),")
+            lines.append("        .iOS(.v18),")
+            lines.append("        .tvOS(.v18),")
+            lines.append("    ],")
+        } else {
+            lines.append("    platforms: [")
+            lines.append("        .macOS(.v15),")
+            lines.append("        .iOS(.v18)")
+            lines.append("    ],")
+        }
+
+        // Dependencies
+        var deps: [String] = []
+        if cli {
+            deps.append("        .package(url: \"https://github.com/apple/swift-argument-parser.git\", from: \"1.5.0\"),")
+        }
+        if hummingbird {
+            deps.append("        .package(url: \"https://github.com/hummingbird-project/hummingbird.git\", from: \"2.0.0\"),")
+            deps.append("        .package(url: \"https://github.com/apple/swift-configuration.git\", from: \"1.0.0\", traits: [.defaults, \"CommandLineArguments\"]),")
+        }
+        if !deps.isEmpty {
+            lines.append("    dependencies: [")
+            lines.append(contentsOf: deps)
+            lines.append("    ],")
+        }
+
+        // Targets
+        lines.append("    targets: [")
+
+        // Core library
+        lines.append("        .target(")
+        lines.append("            name: \"\(coreName)\"")
+        lines.append("        ),")
 
         // App target
         if app {
             let appName = "\(projectName)App"
-            targets.append("""
-                    .target(
-                        name: "\(appName)",
-                        dependencies: ["\(coreName)"]
-                    ),
-            """)
+            lines.append("        .target(")
+            lines.append("            name: \"\(appName)\",")
+            lines.append("            dependencies: [\"\(coreName)\"]")
+            lines.append("        ),")
         }
 
         // CLI target
         if cli {
             let cliName = "\(projectName)CLI"
-            if !deps.contains(where: { $0.contains("swift-argument-parser") }) {
-                deps.append("""
-                        .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
-                """)
-            }
-            targets.append("""
-                    .executableTarget(
-                        name: "\(cliName)",
-                        dependencies: [
-                            "\(coreName)",
-                            .product(name: "ArgumentParser", package: "swift-argument-parser"),
-                        ]
-                    ),
-            """)
+            lines.append("        .executableTarget(")
+            lines.append("            name: \"\(cliName)\",")
+            lines.append("            dependencies: [")
+            lines.append("                \"\(coreName)\",")
+            lines.append("                .product(name: \"ArgumentParser\", package: \"swift-argument-parser\"),")
+            lines.append("            ]")
+            lines.append("        ),")
         }
 
         // Hummingbird target
         if hummingbird {
             let serverName = "\(projectName)Server"
-            if !deps.contains(where: { $0.contains("hummingbird") }) {
-                deps.append("""
-                        .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
-                """)
-                deps.append("""
-                        .package(url: "https://github.com/apple/swift-configuration.git", from: "1.0.0", traits: [.defaults, "CommandLineArguments"]),
-                """)
-            }
-            targets.append("""
-                    .executableTarget(
-                        name: "\(serverName)",
-                        dependencies: [
-                            "\(coreName)",
-                            .product(name: "Configuration", package: "swift-configuration"),
-                            .product(name: "Hummingbird", package: "hummingbird"),
-                        ]
-                    ),
-            """)
+            lines.append("        .executableTarget(")
+            lines.append("            name: \"\(serverName)\",")
+            lines.append("            dependencies: [")
+            lines.append("                \"\(coreName)\",")
+            lines.append("                .product(name: \"Configuration\", package: \"swift-configuration\"),")
+            lines.append("                .product(name: \"Hummingbird\", package: \"hummingbird\"),")
+            lines.append("            ]")
+            lines.append("        ),")
         }
 
-        // Test targets
-        targets.append("""
-                .testTarget(
-                    name: "\(coreName)Tests",
-                    dependencies: ["\(coreName)"]
-                ),
-        """)
+        // Test target
+        lines.append("        .testTarget(")
+        lines.append("            name: \"\(coreName)Tests\",")
+        lines.append("            dependencies: [\"\(coreName)\"]")
+        lines.append("        ),")
 
-        let depsSection: String
-        if deps.isEmpty {
-            depsSection = ""
-        } else {
-            depsSection = """
-                dependencies: [
-            \(deps.joined(separator: "\n"))
-                ],
-            """
-        }
+        lines.append("    ]")
+        lines.append(")")
 
-        let platformSection: String
-        if hummingbird {
-            platformSection = """
-                platforms: [
-                    .macOS(.v15),
-                    .iOS(.v18),
-                    .tvOS(.v18),
-                ],
-            """
-        } else {
-            platformSection = """
-                platforms: [
-                    .macOS(.v15),
-                    .iOS(.v18)
-                ],
-            """
-        }
-
-        return """
-        // swift-tools-version: 6.2
-        import PackageDescription
-
-        let package = Package(
-            name: "\(projectName)",
-        \(platformSection)
-        \(depsSection)    targets: [
-        \(targets.joined(separator: "\n"))    ]
-        )
-        """
+        return lines.joined(separator: "\n")
     }
 }
