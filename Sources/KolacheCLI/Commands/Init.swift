@@ -28,14 +28,10 @@ struct Init: ParsableCommand {
 
     // MARK: - Computed properties
 
-    /// Number of platform-type flags active.
-    private var platformFlagCount: Int {
-        [app, cli, hummingbird].filter(\.self).count
-    }
-
     /// Whether this generates multiple targets (auto-creates a Core library).
+    /// Any two generation flags trigger multi-target mode.
     private var isMultiTarget: Bool {
-        platformFlagCount > 1
+        [package, app, cli, hummingbird].filter(\.self).count > 1
     }
 
     /// Whether any generation flag is set.

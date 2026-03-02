@@ -19,8 +19,9 @@ public struct PackageSwiftGenerator {
     }
 
     /// Whether this generates multiple targets (auto-creates a Core library).
+    /// Any two generation flags trigger multi-target mode.
     public var isMultiTarget: Bool {
-        [app, cli, hummingbird].filter(\.self).count > 1
+        [package, app, cli, hummingbird].filter(\.self).count > 1
     }
 
     public func generate(to projectDir: URL) throws {
