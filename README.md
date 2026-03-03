@@ -1,3 +1,5 @@
+![Kolache](Assets/kolache-icon-256.png)
+
 # Kolache
 
 A Swift CLI for project scaffolding. One command, ready-to-work project.
