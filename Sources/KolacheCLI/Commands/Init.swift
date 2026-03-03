@@ -38,12 +38,6 @@ struct Init: ParsableCommand {
         package || app || cli || hummingbird
     }
 
-    /// Whether a Package.swift should be generated.
-    /// --app alone is Xcode-only (no SPM target), but in multi-target mode
-    /// the other targets need a Package.swift.
-    private var needsPackageSwift: Bool {
-        package || cli || hummingbird
-    }
 
     func run() throws {
         let fm = FileManager.default
@@ -62,6 +56,15 @@ struct Init: ParsableCommand {
             print("⚠️  Already inside a git repository — skipping git init.")
         }
 
+        if isMultiTarget && !hasAnyFlag {
+            // Multi-target requires at least one generation flag
+        }
+
+        // Print notice for auto-detected multi-target
+        if isMultiTarget {
+            print("ℹ️  Multiple flags detected — creating sub-packages.")
+        }
+
         // Check xcodegen before doing any work
         if app {
             try XcodeGenRunner.verifyOrInstall()
@@ -74,20 +77,7 @@ struct Init: ParsableCommand {
         print("📁 Creating \"\(projectName)\"...")
         try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
 
-        // Generate Package.swift (--app alone is Xcode-only, no Package.swift)
-        if needsPackageSwift {
-            print("📝 Writing Package.swift...")
-            let generator = PackageSwiftGenerator(
-                projectName: projectName,
-                app: app,
-                cli: cli,
-                hummingbird: hummingbird,
-                package: package
-            )
-            try generator.generate(to: projectDir)
-        }
-
-        // Generate targets
+        // Generate
         if isMultiTarget {
             try generateMultiTarget(projectDir: projectDir, config: config)
         } else {
@@ -125,7 +115,6 @@ struct Init: ParsableCommand {
     // MARK: - Single target generation
 
     private func generateSingleTarget(projectDir: URL, config: KolacheConfig) throws {
-        // Single flag — target name matches project name
         if app {
             print("🔨 Adding SwiftUI app...")
             try AppTemplate(
@@ -135,6 +124,8 @@ struct Init: ParsableCommand {
             ).generate()
         } else if cli {
             print("📦 Adding CLI package...")
+            try PackageSwiftGenerator(projectName: projectName, cli: true)
+                .generate(to: projectDir)
             try CLITemplate(
                 targetName: projectName,
                 projectDir: projectDir,
@@ -142,6 +133,8 @@ struct Init: ParsableCommand {
             ).generate()
         } else if hummingbird {
             print("📦 Adding Hummingbird server...")
+            try PackageSwiftGenerator(projectName: projectName, hummingbird: true)
+                .generate(to: projectDir)
             try HummingbirdTemplate(
                 targetName: projectName,
                 projectDir: projectDir,
@@ -149,6 +142,8 @@ struct Init: ParsableCommand {
             ).generate()
         } else if package {
             print("📦 Adding Swift library...")
+            try PackageSwiftGenerator(projectName: projectName, package: true)
+                .generate(to: projectDir)
             try PackageTemplate(
                 targetName: projectName,
                 projectDir: projectDir,
@@ -157,47 +152,80 @@ struct Init: ParsableCommand {
         }
     }
 
-    // MARK: - Multi target generation
+    // MARK: - Multi target generation (sub-packages)
 
     private func generateMultiTarget(projectDir: URL, config: KolacheConfig) throws {
+        let fm = FileManager.default
         let coreName = "\(projectName)Core"
 
-        // Core library — always generated in multi-target
-        print("📦 Adding \(coreName) library...")
+        // Core sub-package — always created in multi-target
+        let coreDir = projectDir.appendingPathComponent(coreName)
+        print("📁 Creating \"\(coreName)\"...")
+        try fm.createDirectory(at: coreDir, withIntermediateDirectories: true)
+        print("📦 Adding Core package...")
+        try PackageSwiftGenerator(projectName: coreName, package: true)
+            .generate(to: coreDir)
         try CoreTemplate(
             targetName: coreName,
-            projectDir: projectDir,
+            projectDir: coreDir,
             config: config
         ).generate()
 
+        var subPackages = [coreName]
+
+        // App sub-package (uses project name, not suffixed)
         if app {
-            let appName = "\(projectName)App"
-            print("🔨 Adding \(appName) target...")
+            let appDir = projectDir.appendingPathComponent(projectName)
+            print("📁 Creating \"\(projectName)\"...")
+            try fm.createDirectory(at: appDir, withIntermediateDirectories: true)
+            print("🔨 Adding Xcode project to \(projectName)...")
             try AppTemplate(
-                targetName: appName,
-                projectDir: projectDir,
-                config: config
+                targetName: projectName,
+                projectDir: appDir,
+                config: config,
+                corePackageName: coreName
             ).generate()
+            subPackages.append(projectName)
         }
 
+        // CLI sub-package
         if cli {
             let cliName = "\(projectName)CLI"
-            print("📦 Adding \(cliName) target...")
+            let cliDir = projectDir.appendingPathComponent(cliName)
+            print("📁 Creating \"\(cliName)\"...")
+            try fm.createDirectory(at: cliDir, withIntermediateDirectories: true)
+            print("📦 Adding CLI package to \(cliName)...")
+            try PackageSwiftGenerator(projectName: cliName, cli: true, corePackageName: coreName)
+                .generate(to: cliDir)
             try CLITemplate(
                 targetName: cliName,
-                projectDir: projectDir,
+                projectDir: cliDir,
                 config: config
             ).generate()
+            subPackages.append(cliName)
         }
 
+        // Hummingbird sub-package (named Server)
         if hummingbird {
             let serverName = "\(projectName)Server"
-            print("📦 Adding \(serverName) target...")
+            let serverDir = projectDir.appendingPathComponent(serverName)
+            print("📁 Creating \"\(serverName)\"...")
+            try fm.createDirectory(at: serverDir, withIntermediateDirectories: true)
+            print("📦 Adding Hummingbird server package to \(serverName)...")
+            try PackageSwiftGenerator(projectName: serverName, hummingbird: true, corePackageName: coreName)
+                .generate(to: serverDir)
             try HummingbirdTemplate(
                 targetName: serverName,
-                projectDir: projectDir,
+                projectDir: serverDir,
                 config: config
             ).generate()
+            subPackages.append(serverName)
+        }
+
+        print("")
+        print("📦 Sub-packages created:")
+        for sub in subPackages {
+            print("   • \(sub)/")
         }
     }
 
@@ -209,13 +237,13 @@ struct Init: ParsableCommand {
 
         if isMultiTarget {
             if app {
-                print("   open \(projectName)App.xcodeproj")
+                print("   open \(projectName)/\(projectName).xcodeproj")
             }
             if cli {
-                print("   swift run \(projectName)CLI")
+                print("   cd \(projectName)CLI && swift run")
             }
             if hummingbird {
-                print("   swift run \(projectName)Server")
+                print("   cd \(projectName)Server && swift run")
             }
         } else {
             if app {
@@ -234,14 +262,14 @@ struct Init: ParsableCommand {
         var lines = ["# \(projectName)", ""]
 
         if isMultiTarget {
-            lines.append("A multi-target Swift project.")
+            lines.append("A multi-package Swift project.")
             lines.append("")
-            lines.append("## Targets")
+            lines.append("## Packages")
             lines.append("")
-            lines.append("- **\(projectName)Core** — shared library")
-            if app { lines.append("- **\(projectName)App** — SwiftUI application") }
-            if cli { lines.append("- **\(projectName)CLI** — command-line tool") }
-            if hummingbird { lines.append("- **\(projectName)Server** — Hummingbird HTTP server") }
+            lines.append("- `\(projectName)Core/` — shared library")
+            if app { lines.append("- `\(projectName)/` — SwiftUI application") }
+            if cli { lines.append("- `\(projectName)CLI/` — command-line tool") }
+            if hummingbird { lines.append("- `\(projectName)Server/` — Hummingbird HTTP server") }
         } else if app {
             lines.append("A SwiftUI application.")
         } else if cli {

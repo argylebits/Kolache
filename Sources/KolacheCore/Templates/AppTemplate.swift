@@ -7,11 +7,13 @@ public struct AppTemplate {
     public let targetName: String
     public let projectDir: URL
     public let config: KolacheConfig
+    public var corePackageName: String? = nil
 
-    public init(targetName: String, projectDir: URL, config: KolacheConfig) {
+    public init(targetName: String, projectDir: URL, config: KolacheConfig, corePackageName: String? = nil) {
         self.targetName = targetName
         self.projectDir = projectDir
         self.config = config
+        self.corePackageName = corePackageName
     }
 
     public func generate() throws {
@@ -58,8 +60,25 @@ public struct AppTemplate {
 
     // MARK: - project.yml
 
-    private var projectYML: String {
+    var projectYML: String {
         let bundleId = "\(config.bundleIdPrefix).\(targetName.lowercased())"
+
+        let localPackagesSection = corePackageName.map { coreName in
+            """
+
+            localPackages:
+              - ../\(coreName)
+            """
+        } ?? ""
+
+        let coreDependency = corePackageName.map { coreName in
+            """
+
+                dependencies:
+                  - package: \(coreName)
+            """
+        } ?? ""
+
         return """
         name: \(targetName)
 
@@ -71,7 +90,7 @@ public struct AppTemplate {
           xcodeVersion: "16.0"
           generateEmptyDirectories: true
           createIntermediateGroups: true
-
+        \(localPackagesSection)
         settings:
           base:
             SWIFT_VERSION: 6.2
@@ -86,7 +105,7 @@ public struct AppTemplate {
             type: application
             supportedDestinations: [iOS, macOS]
             sources:
-              - path: Sources/\(targetName)
+              - path: Sources/\(targetName)\(coreDependency)
             settings:
               base:
                 PRODUCT_BUNDLE_IDENTIFIER: \(bundleId)

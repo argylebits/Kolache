@@ -1,31 +1,36 @@
 import Foundation
 
-/// Generates a composed Package.swift from active flags.
-/// Handles single-target vs multi-target naming, dependency composition,
-/// and platform declarations.
+/// Generates a Package.swift for a single sub-package.
+/// In multi-target mode, Init.swift calls this once per sub-package directory,
+/// each with its own isolated dependencies and an optional path reference to Core.
 public struct PackageSwiftGenerator {
     public let projectName: String
     public let app: Bool
     public let cli: Bool
     public let hummingbird: Bool
     public let package: Bool
+    public var corePackageName: String? = nil
 
-    public init(projectName: String, app: Bool, cli: Bool, hummingbird: Bool, package: Bool) {
+    public init(
+        projectName: String,
+        app: Bool = false,
+        cli: Bool = false,
+        hummingbird: Bool = false,
+        package: Bool = false,
+        corePackageName: String? = nil
+    ) {
         self.projectName = projectName
         self.app = app
         self.cli = cli
         self.hummingbird = hummingbird
         self.package = package
+        self.corePackageName = corePackageName
     }
 
     /// Whether the given flags produce multiple targets (auto-creates a Core library).
     /// Any two generation flags trigger multi-target mode.
     public static func isMultiTarget(package: Bool, app: Bool, cli: Bool, hummingbird: Bool) -> Bool {
         [package, app, cli, hummingbird].filter(\.self).count > 1
-    }
-
-    public var isMultiTarget: Bool {
-        Self.isMultiTarget(package: package, app: app, cli: cli, hummingbird: hummingbird)
     }
 
     public func generate(to projectDir: URL) throws {
@@ -39,28 +44,40 @@ public struct PackageSwiftGenerator {
     // MARK: - Package.swift generation
 
     private var packageSwift: String {
-        if isMultiTarget {
-            return multiTargetPackage
-        } else {
-            return singleTargetPackage
-        }
-    }
-
-    // MARK: - Single-target Package.swift
-
-    private var singleTargetPackage: String {
         if cli {
-            return singleCLIPackage
+            return cliPackage
         } else if hummingbird {
-            return singleHummingbirdPackage
+            return hummingbirdPackage
         } else {
-            // --package only (plain library)
-            return singleLibraryPackage
+            return libraryPackage
         }
     }
 
-    private var singleLibraryPackage: String {
-        """
+    // MARK: - Library Package.swift
+
+    private var libraryPackage: String {
+        var pkgDeps = [String]()
+        if let coreName = corePackageName {
+            pkgDeps.append("        .package(path: \"../\(coreName)\"),")
+        }
+
+        var tgtDeps = [String]()
+        if let coreName = corePackageName {
+            tgtDeps.append("            dependencies: [\"\(coreName)\"]")
+        }
+
+        let depsSection = pkgDeps.isEmpty ? "" : """
+
+                dependencies: [
+            \(pkgDeps.joined(separator: "\n"))
+                ],
+            """
+
+        let targetDepsSection = tgtDeps.isEmpty
+            ? "            name: \"\(projectName)\""
+            : "            name: \"\(projectName)\",\n\(tgtDeps.joined(separator: "\n"))"
+
+        return """
         // swift-tools-version: 6.2
         import PackageDescription
 
@@ -70,9 +87,12 @@ public struct PackageSwiftGenerator {
                 .macOS(.v15),
                 .iOS(.v18)
             ],
+            products: [
+                .library(name: "\(projectName)", targets: ["\(projectName)"]),
+            ],\(depsSection)
             targets: [
                 .target(
-                    name: "\(projectName)"
+        \(targetDepsSection)
                 ),
                 .testTarget(
                     name: "\(projectName)Tests",
@@ -83,8 +103,22 @@ public struct PackageSwiftGenerator {
         """
     }
 
-    private var singleCLIPackage: String {
-        """
+    // MARK: - CLI Package.swift
+
+    private var cliPackage: String {
+        var pkgDeps = [String]()
+        if let coreName = corePackageName {
+            pkgDeps.append("        .package(path: \"../\(coreName)\"),")
+        }
+        pkgDeps.append("        .package(url: \"https://github.com/apple/swift-argument-parser.git\", from: \"1.5.0\"),")
+
+        var tgtDeps = [String]()
+        if let coreName = corePackageName {
+            tgtDeps.append("                \"\(coreName)\",")
+        }
+        tgtDeps.append("                .product(name: \"ArgumentParser\", package: \"swift-argument-parser\"),")
+
+        return """
         // swift-tools-version: 6.2
         import PackageDescription
 
@@ -94,13 +128,13 @@ public struct PackageSwiftGenerator {
                 .macOS(.v15),
             ],
             dependencies: [
-                .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        \(pkgDeps.joined(separator: "\n"))
             ],
             targets: [
                 .executableTarget(
                     name: "\(projectName)",
                     dependencies: [
-                        .product(name: "ArgumentParser", package: "swift-argument-parser"),
+        \(tgtDeps.joined(separator: "\n"))
                     ]
                 ),
                 .testTarget(
@@ -112,8 +146,24 @@ public struct PackageSwiftGenerator {
         """
     }
 
-    private var singleHummingbirdPackage: String {
-        """
+    // MARK: - Hummingbird Package.swift
+
+    private var hummingbirdPackage: String {
+        var pkgDeps = [String]()
+        if let coreName = corePackageName {
+            pkgDeps.append("        .package(path: \"../\(coreName)\"),")
+        }
+        pkgDeps.append("        .package(url: \"https://github.com/hummingbird-project/hummingbird.git\", from: \"2.0.0\"),")
+        pkgDeps.append("        .package(url: \"https://github.com/apple/swift-configuration.git\", from: \"1.0.0\", traits: [.defaults, \"CommandLineArguments\"]),")
+
+        var tgtDeps = [String]()
+        if let coreName = corePackageName {
+            tgtDeps.append("                \"\(coreName)\",")
+        }
+        tgtDeps.append("                .product(name: \"Configuration\", package: \"swift-configuration\"),")
+        tgtDeps.append("                .product(name: \"Hummingbird\", package: \"hummingbird\"),")
+
+        return """
         // swift-tools-version: 6.2
         import PackageDescription
 
@@ -128,15 +178,13 @@ public struct PackageSwiftGenerator {
                 .executable(name: "\(projectName)", targets: ["\(projectName)"]),
             ],
             dependencies: [
-                .package(url: "https://github.com/hummingbird-project/hummingbird.git", from: "2.0.0"),
-                .package(url: "https://github.com/apple/swift-configuration.git", from: "1.0.0", traits: [.defaults, "CommandLineArguments"]),
+        \(pkgDeps.joined(separator: "\n"))
             ],
             targets: [
                 .executableTarget(
                     name: "\(projectName)",
                     dependencies: [
-                        .product(name: "Configuration", package: "swift-configuration"),
-                        .product(name: "Hummingbird", package: "hummingbird"),
+        \(tgtDeps.joined(separator: "\n"))
                     ]
                 ),
                 .testTarget(
@@ -149,110 +197,5 @@ public struct PackageSwiftGenerator {
             ]
         )
         """
-    }
-
-    // MARK: - Multi-target Package.swift
-
-    private var multiTargetPackage: String {
-        let coreName = "\(projectName)Core"
-
-        var lines: [String] = []
-        lines.append("// swift-tools-version: 6.2")
-        lines.append("import PackageDescription")
-        lines.append("")
-        lines.append("let package = Package(")
-        lines.append("    name: \"\(projectName)\",")
-
-        // Platforms
-        if hummingbird {
-            lines.append("    platforms: [")
-            lines.append("        .macOS(.v15),")
-            lines.append("        .iOS(.v18),")
-            lines.append("        .tvOS(.v18),")
-            lines.append("    ],")
-        } else {
-            lines.append("    platforms: [")
-            lines.append("        .macOS(.v15),")
-            lines.append("        .iOS(.v18)")
-            lines.append("    ],")
-        }
-
-        // Dependencies
-        var deps: [String] = []
-        if cli {
-            deps.append("        .package(url: \"https://github.com/apple/swift-argument-parser.git\", from: \"1.5.0\"),")
-        }
-        if hummingbird {
-            deps.append("        .package(url: \"https://github.com/hummingbird-project/hummingbird.git\", from: \"2.0.0\"),")
-            deps.append("        .package(url: \"https://github.com/apple/swift-configuration.git\", from: \"1.0.0\", traits: [.defaults, \"CommandLineArguments\"]),")
-        }
-        if !deps.isEmpty {
-            lines.append("    dependencies: [")
-            lines.append(contentsOf: deps)
-            lines.append("    ],")
-        }
-
-        // Targets
-        lines.append("    targets: [")
-
-        // Core library
-        lines.append("        .target(")
-        lines.append("            name: \"\(coreName)\"")
-        lines.append("        ),")
-
-        // CLI target
-        if cli {
-            let cliName = "\(projectName)CLI"
-            lines.append("        .executableTarget(")
-            lines.append("            name: \"\(cliName)\",")
-            lines.append("            dependencies: [")
-            lines.append("                \"\(coreName)\",")
-            lines.append("                .product(name: \"ArgumentParser\", package: \"swift-argument-parser\"),")
-            lines.append("            ]")
-            lines.append("        ),")
-        }
-
-        // Hummingbird target
-        if hummingbird {
-            let serverName = "\(projectName)Server"
-            lines.append("        .executableTarget(")
-            lines.append("            name: \"\(serverName)\",")
-            lines.append("            dependencies: [")
-            lines.append("                \"\(coreName)\",")
-            lines.append("                .product(name: \"Configuration\", package: \"swift-configuration\"),")
-            lines.append("                .product(name: \"Hummingbird\", package: \"hummingbird\"),")
-            lines.append("            ]")
-            lines.append("        ),")
-        }
-
-        // Test targets
-        lines.append("        .testTarget(")
-        lines.append("            name: \"\(coreName)Tests\",")
-        lines.append("            dependencies: [\"\(coreName)\"]")
-        lines.append("        ),")
-
-        if cli {
-            let cliName = "\(projectName)CLI"
-            lines.append("        .testTarget(")
-            lines.append("            name: \"\(cliName)Tests\",")
-            lines.append("            dependencies: [\"\(cliName)\"]")
-            lines.append("        ),")
-        }
-
-        if hummingbird {
-            let serverName = "\(projectName)Server"
-            lines.append("        .testTarget(")
-            lines.append("            name: \"\(serverName)Tests\",")
-            lines.append("            dependencies: [")
-            lines.append("                \"\(serverName)\",")
-            lines.append("                .product(name: \"HummingbirdTesting\", package: \"hummingbird\"),")
-            lines.append("            ]")
-            lines.append("        ),")
-        }
-
-        lines.append("    ]")
-        lines.append(")")
-
-        return lines.joined(separator: "\n")
     }
 }
