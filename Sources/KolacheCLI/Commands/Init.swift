@@ -29,14 +29,20 @@ struct Init: ParsableCommand {
     // MARK: - Computed properties
 
     /// Whether this generates multiple targets (auto-creates a Core library).
-    /// Any two generation flags trigger multi-target mode.
     private var isMultiTarget: Bool {
-        [package, app, cli, hummingbird].filter(\.self).count > 1
+        PackageSwiftGenerator.isMultiTarget(package: package, app: app, cli: cli, hummingbird: hummingbird)
     }
 
     /// Whether any generation flag is set.
     private var hasAnyFlag: Bool {
         package || app || cli || hummingbird
+    }
+
+    /// Whether a Package.swift should be generated.
+    /// --app alone is Xcode-only (no SPM target), but in multi-target mode
+    /// the other targets need a Package.swift.
+    private var needsPackageSwift: Bool {
+        package || cli || hummingbird
     }
 
     func run() throws {
@@ -68,8 +74,8 @@ struct Init: ParsableCommand {
         print("📁 Creating \"\(projectName)\"...")
         try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
 
-        // Generate Package.swift if any flag is set
-        if hasAnyFlag {
+        // Generate Package.swift (--app alone is Xcode-only, no Package.swift)
+        if needsPackageSwift {
             print("📝 Writing Package.swift...")
             let generator = PackageSwiftGenerator(
                 projectName: projectName,
@@ -163,26 +169,6 @@ struct Init: ParsableCommand {
             projectDir: projectDir,
             config: config
         ).generate()
-
-        // Core tests
-        let coreTestsDir = projectDir.appendingPathComponent("Tests/\(coreName)Tests")
-        try FileManager.default.createDirectory(at: coreTestsDir, withIntermediateDirectories: true)
-        let coreTestContent = """
-        import Testing
-        @testable import \(coreName)
-
-        @Suite("\(coreName) Tests")
-        struct \(coreName)Tests {
-            @Test("Example test")
-            func example() async throws {
-                // Add your tests here
-            }
-        }
-        """
-        try coreTestContent.write(
-            to: coreTestsDir.appendingPathComponent("\(coreName)Tests.swift"),
-            atomically: true, encoding: .utf8
-        )
 
         if app {
             let appName = "\(projectName)App"

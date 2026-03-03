@@ -18,10 +18,14 @@ public struct PackageSwiftGenerator {
         self.package = package
     }
 
-    /// Whether this generates multiple targets (auto-creates a Core library).
+    /// Whether the given flags produce multiple targets (auto-creates a Core library).
     /// Any two generation flags trigger multi-target mode.
-    public var isMultiTarget: Bool {
+    public static func isMultiTarget(package: Bool, app: Bool, cli: Bool, hummingbird: Bool) -> Bool {
         [package, app, cli, hummingbird].filter(\.self).count > 1
+    }
+
+    public var isMultiTarget: Bool {
+        Self.isMultiTarget(package: package, app: app, cli: cli, hummingbird: hummingbird)
     }
 
     public func generate(to projectDir: URL) throws {
@@ -45,9 +49,7 @@ public struct PackageSwiftGenerator {
     // MARK: - Single-target Package.swift
 
     private var singleTargetPackage: String {
-        if app {
-            return singleAppPackage
-        } else if cli {
+        if cli {
             return singleCLIPackage
         } else if hummingbird {
             return singleHummingbirdPackage
@@ -104,26 +106,6 @@ public struct PackageSwiftGenerator {
                 .testTarget(
                     name: "\(projectName)Tests",
                     dependencies: ["\(projectName)"]
-                ),
-            ]
-        )
-        """
-    }
-
-    private var singleAppPackage: String {
-        """
-        // swift-tools-version: 6.2
-        import PackageDescription
-
-        let package = Package(
-            name: "\(projectName)",
-            platforms: [
-                .macOS(.v15),
-                .iOS(.v18)
-            ],
-            targets: [
-                .target(
-                    name: "\(projectName)"
                 ),
             ]
         )
@@ -218,15 +200,6 @@ public struct PackageSwiftGenerator {
         lines.append("            name: \"\(coreName)\"")
         lines.append("        ),")
 
-        // App target
-        if app {
-            let appName = "\(projectName)App"
-            lines.append("        .target(")
-            lines.append("            name: \"\(appName)\",")
-            lines.append("            dependencies: [\"\(coreName)\"]")
-            lines.append("        ),")
-        }
-
         // CLI target
         if cli {
             let cliName = "\(projectName)CLI"
@@ -252,11 +225,30 @@ public struct PackageSwiftGenerator {
             lines.append("        ),")
         }
 
-        // Test target
+        // Test targets
         lines.append("        .testTarget(")
         lines.append("            name: \"\(coreName)Tests\",")
         lines.append("            dependencies: [\"\(coreName)\"]")
         lines.append("        ),")
+
+        if cli {
+            let cliName = "\(projectName)CLI"
+            lines.append("        .testTarget(")
+            lines.append("            name: \"\(cliName)Tests\",")
+            lines.append("            dependencies: [\"\(cliName)\"]")
+            lines.append("        ),")
+        }
+
+        if hummingbird {
+            let serverName = "\(projectName)Server"
+            lines.append("        .testTarget(")
+            lines.append("            name: \"\(serverName)Tests\",")
+            lines.append("            dependencies: [")
+            lines.append("                \"\(serverName)\",")
+            lines.append("                .product(name: \"HummingbirdTesting\", package: \"hummingbird\"),")
+            lines.append("            ]")
+            lines.append("        ),")
+        }
 
         lines.append("    ]")
         lines.append(")")

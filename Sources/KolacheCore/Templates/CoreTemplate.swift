@@ -1,7 +1,7 @@
 import Foundation
 
 /// Generates a Core library stub for multi-target projects.
-/// Creates Sources/<Name>Core/<Name>Core.swift with a public empty struct.
+/// Creates source and test files for the <Name>Core library.
 public struct CoreTemplate {
     public let targetName: String
     public let projectDir: URL
@@ -19,11 +19,19 @@ public struct CoreTemplate {
         let sourcesDir = projectDir
             .appendingPathComponent("Sources")
             .appendingPathComponent(targetName)
+        let testsDir = projectDir
+            .appendingPathComponent("Tests")
+            .appendingPathComponent("\(targetName)Tests")
 
         try fm.createDirectory(at: sourcesDir, withIntermediateDirectories: true)
+        try fm.createDirectory(at: testsDir, withIntermediateDirectories: true)
 
         try mainSwift.write(
             to: sourcesDir.appendingPathComponent("\(targetName).swift"),
+            atomically: true, encoding: .utf8
+        )
+        try testsSwift.write(
+            to: testsDir.appendingPathComponent("\(targetName)Tests.swift"),
             atomically: true, encoding: .utf8
         )
     }
@@ -39,6 +47,21 @@ public struct CoreTemplate {
 
         public struct \(targetName) {
             public init() {}
+        }
+        """
+    }
+
+    private var testsSwift: String {
+        """
+        import Testing
+        @testable import \(targetName)
+
+        @Suite("\(targetName) Tests")
+        struct \(targetName)Tests {
+            @Test("Example test")
+            func example() async throws {
+                // Add your tests here
+            }
         }
         """
     }

@@ -13,9 +13,12 @@ public enum Git {
         process.standardError = pipe
 
         try process.run()
+
+        // Read pipe data before waiting to avoid deadlock if buffer fills
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
-        let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        let output = String(data: data, encoding: .utf8) ?? ""
 
         guard process.terminationStatus == 0 else {
             throw KolacheError.shellCommandFailed("git \(args.joined(separator: " "))", process.terminationStatus)

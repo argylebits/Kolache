@@ -27,10 +27,13 @@ public enum XcodeGenRunner {
         process.standardError = pipe
 
         try process.run()
+
+        // Read pipe data before waiting to avoid deadlock if buffer fills
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
         process.waitUntilExit()
 
         guard process.terminationStatus == 0 else {
-            let output = String(data: pipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+            let output = String(data: data, encoding: .utf8) ?? ""
             throw KolacheError.xcodeGenFailed(output)
         }
     }
@@ -91,7 +94,7 @@ public enum XcodeGenRunner {
         print("")
     }
 
-    public static func which(_ command: String) -> String? {
+    static func which(_ command: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/usr/bin/which")
         process.arguments = [command]
