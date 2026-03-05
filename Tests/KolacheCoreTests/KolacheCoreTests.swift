@@ -183,7 +183,7 @@ struct AppTemplateTests {
         #expect(!yml.contains("localPackages"))
         #expect(!yml.contains("dependencies:"))
         #expect(yml.contains("name: MyApp"))
-        #expect(yml.contains("Sources/MyApp"))
+        #expect(yml.contains("path: MyApp"))
     }
 
     @Test("project.yml with core includes localPackages and target dependency")
@@ -211,7 +211,7 @@ struct AppTemplateTests {
         let yml = template.projectYML
 
         #expect(yml.contains("name: Pinstripes"))
-        #expect(yml.contains("Sources/Pinstripes"))
+        #expect(yml.contains("path: Pinstripes"))
         #expect(!yml.contains("PinstripesApp"))
     }
 }
@@ -471,8 +471,8 @@ struct MultiTargetIntegrationTests {
         let yml = template.projectYML
         #expect(yml.contains("name: Pinstripes"))
         #expect(!yml.contains("name: PinstripesApp"))
-        #expect(yml.contains("Sources/Pinstripes"))
-        #expect(!yml.contains("Sources/PinstripesApp"))
+        #expect(yml.contains("path: Pinstripes"))
+        #expect(!yml.contains("PinstripesApp"))
 
         // Verify the directory is at projectName, not projectNameApp
         #expect(dirExists(root, projectName))

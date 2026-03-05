@@ -117,7 +117,7 @@ SwiftUI application with Xcode project generated via
 ```
 MyApp/
 ├── MyApp.xcodeproj
-├── Sources/MyApp/
+├── MyApp/
 │   ├── MyAppApp.swift
 │   ├── ContentView.swift
 │   ├── Assets.xcassets/
@@ -192,7 +192,7 @@ Pinstripes/
 │   └── Tests/PinstripesCoreTests/
 ├── Pinstripes/
 │   ├── Pinstripes.xcodeproj       ← references ../PinstripesCore
-│   └── Sources/Pinstripes/
+│   └── Pinstripes/
 │       ├── PinstripesApp.swift
 │       ├── ContentView.swift
 │       └── Assets.xcassets/

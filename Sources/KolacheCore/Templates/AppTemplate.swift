@@ -20,7 +20,6 @@ public struct AppTemplate {
         let fm = FileManager.default
 
         let sourceDir = projectDir
-            .appendingPathComponent("Sources")
             .appendingPathComponent(targetName)
         let assetsDir = sourceDir.appendingPathComponent("Assets.xcassets")
         let appIconDir = assetsDir.appendingPathComponent("AppIcon.appiconset")
@@ -105,7 +104,7 @@ public struct AppTemplate {
             type: application
             supportedDestinations: [iOS, macOS]
             sources:
-              - path: Sources/\(targetName)\(coreDependency)
+              - path: \(targetName)\(coreDependency)
             settings:
               base:
                 PRODUCT_BUNDLE_IDENTIFIER: \(bundleId)
