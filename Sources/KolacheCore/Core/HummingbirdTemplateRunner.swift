@@ -1,9 +1,8 @@
 import Foundation
 
 public enum HummingbirdTemplateRunner {
-    // TODO: Replace with clone-from-remote once fork is merged upstream
-    private static let localTemplatePath =
-        NSString("~/Code/ArgyleBits/Forks/Hummingbird/template").expandingTildeInPath
+    private static let repoURL = "https://github.com/argylebits/template.git"
+    private static let tag = "2.3.1-argylebits.1"
 
     /// Run the Hummingbird template configure.sh non-interactively.
     public static func run(
@@ -11,12 +10,37 @@ public enum HummingbirdTemplateRunner {
         packageName: String,
         executableName: String
     ) throws {
-        let templateDir = URL(fileURLWithPath: localTemplatePath)
-        let configureScript = templateDir.appendingPathComponent("configure.sh")
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("kolache-hummingbird-\(UUID().uuidString)")
+
+        defer {
+            try? FileManager.default.removeItem(at: tempDir)
+        }
+
+        // Clone the template repo at the pinned tag
+        print("  → Cloning Hummingbird template...")
+        let clone = Process()
+        clone.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        clone.arguments = [
+            "clone", "--depth", "1", "--branch", tag, repoURL, tempDir.path
+        ]
+        clone.standardOutput = FileHandle.standardOutput
+        clone.standardError = FileHandle.standardError
+
+        try clone.run()
+        clone.waitUntilExit()
+
+        guard clone.terminationStatus == 0 else {
+            throw KolacheError.hummingbirdTemplateFailed(
+                "Failed to clone Hummingbird template (exit code \(clone.terminationStatus))"
+            )
+        }
+
+        let configureScript = tempDir.appendingPathComponent("configure.sh")
 
         guard FileManager.default.fileExists(atPath: configureScript.path) else {
             throw KolacheError.hummingbirdTemplateFailed(
-                "Hummingbird template not found at \(templateDir.path)"
+                "configure.sh not found in cloned template"
             )
         }
 
@@ -29,7 +53,7 @@ public enum HummingbirdTemplateRunner {
             "--package-name", packageName,
             "--executable-name", executableName
         ]
-        process.currentDirectoryURL = templateDir
+        process.currentDirectoryURL = tempDir
         process.standardOutput = FileHandle.standardOutput
         process.standardError = FileHandle.standardError
 
