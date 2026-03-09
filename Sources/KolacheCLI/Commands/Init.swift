@@ -56,7 +56,7 @@ struct Init: ParsableCommand {
                 print("   cd \(projectName)CLI && swift run")
             }
             if hummingbird {
-                print("   cd \(projectName)Server && swift run")
+                print("   cd \(projectName)Hummingbird && swift run")
             }
         } else {
             if app {
