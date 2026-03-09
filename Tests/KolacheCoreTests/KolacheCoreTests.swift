@@ -516,17 +516,55 @@ struct SingleTargetIntegrationTests {
         #expect(!dirExists(dir, "\(projectName)CLI"))
     }
 
-    // TODO: Re-enable once fork supports non-interactive flags for automated testing.
-    // HummingbirdTemplate.generate() now delegates to configure.sh (interactive).
-    // @Test("Single --hummingbird: Package.swift, sources, Dockerfile at root, no sub-directories")
+    @Test("Single --hummingbird: Package.swift, sources, Dockerfile at root, no sub-directories")
+    func singleHummingbird() throws {
+        let projectName = "MySrv"
+        let dir = try makeTempDir()
+        try HummingbirdTemplate(targetName: projectName, projectDir: dir).generate()
+
+        #expect(fileExists(dir, "Package.swift"))
+        #expect(fileExists(dir, "Sources/App/App.swift"))
+        #expect(fileExists(dir, "Sources/App/App+build.swift"))
+        #expect(fileExists(dir, "Tests/AppTests/AppTests.swift"))
+        #expect(fileExists(dir, "Dockerfile"))
+        #expect(fileExists(dir, ".dockerignore"))
+        #expect(fileExists(dir, ".github/workflows/ci.yml"))
+        #expect(!dirExists(dir, "\(projectName)Core"))
+        #expect(!dirExists(dir, "\(projectName)Hummingbird"))
+
+        let pkg = try readFile(dir, "Package.swift")
+        #expect(pkg.contains("name: \"\(projectName)\""))
+    }
 }
 
 @Suite("Integration — Multi Target with --package")
 struct MultiTargetWithPackageTests {
 
-    // TODO: Re-enable once fork supports non-interactive flags for automated testing.
-    // HummingbirdTemplate.generate() now delegates to configure.sh (interactive).
-    // @Test("--package --cli --hummingbird: creates Core, CLI, Hummingbird sub-directories")
+    @Test("--package --cli --hummingbird: creates Core, CLI, Hummingbird sub-directories")
+    func structure() throws {
+        let names = Fixtures.ProjectNames("Test")
+        let root = try makeTempDir()
+
+        let coreDir = root.appendingPathComponent(names.core)
+        let cliDir = root.appendingPathComponent(names.cli)
+        let hummingbirdDir = root.appendingPathComponent(names.hummingbird)
+        for d in [coreDir, cliDir] {
+            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        }
+
+        try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
+        try PackageTemplate(targetName: names.core, projectDir: coreDir).generate()
+
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try CLITemplate(targetName: names.cli, projectDir: cliDir).generate()
+
+        try HummingbirdTemplate(targetName: names.hummingbird, projectDir: hummingbirdDir, corePackageName: names.core).generate()
+
+        #expect(dirExists(root, names.core))
+        #expect(dirExists(root, names.cli))
+        #expect(dirExists(root, names.hummingbird))
+        #expect(!fileExists(root, "Package.swift"))
+    }
 
     @Test("--package --cli --hummingbird: each sub-package has its own Package.swift with correct name")
     func separatePackageSwiftFiles() throws {
@@ -628,9 +666,34 @@ struct MultiTargetWithPackageTests {
         #expect(!dirExists(root, "\(projectName)App"))
     }
 
-    // TODO: Re-enable once fork supports non-interactive flags for automated testing.
-    // HummingbirdTemplate.generate() now delegates to configure.sh (interactive).
-    // @Test("--package --app --cli --hummingbird: all four sub-directories with expected files")
+    @Test("--package --cli --hummingbird: all sub-directories with expected files")
+    func allSubPackages() throws {
+        let names = Fixtures.ProjectNames("Full")
+        let root = try makeTempDir()
+
+        let coreDir = root.appendingPathComponent(names.core)
+        let cliDir = root.appendingPathComponent(names.cli)
+        let hummingbirdDir = root.appendingPathComponent(names.hummingbird)
+        for d in [coreDir, cliDir] {
+            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        }
+
+        try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
+        try PackageTemplate(targetName: names.core, projectDir: coreDir).generate()
+
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try CLITemplate(targetName: names.cli, projectDir: cliDir).generate()
+
+        try HummingbirdTemplate(targetName: names.hummingbird, projectDir: hummingbirdDir, corePackageName: names.core).generate()
+
+        #expect(fileExists(coreDir, "Package.swift"))
+        #expect(fileExists(coreDir, "Sources/\(names.core)/\(names.core).swift"))
+        #expect(fileExists(cliDir, "Package.swift"))
+        #expect(fileExists(cliDir, "Sources/\(names.cli)/\(names.cli).swift"))
+        #expect(fileExists(hummingbirdDir, "Package.swift"))
+        #expect(fileExists(hummingbirdDir, "Sources/App/App.swift"))
+        #expect(fileExists(hummingbirdDir, "Dockerfile"))
+    }
 
     @Test("Multi-target has no Package.swift at project root")
     func noRootPackageSwift() throws {
@@ -669,9 +732,33 @@ struct MultiTargetWithoutPackageTests {
         #expect(!yml.contains("- package:"))
     }
 
-    // TODO: Re-enable once fork supports non-interactive flags for automated testing.
-    // HummingbirdTemplate.generate() now delegates to configure.sh (interactive).
-    // @Test("--cli --hummingbird without --package: no Core directory or core references")
+    @Test("--cli --hummingbird without --package: no Core directory or core references")
+    func noCoreDirOrReferences() throws {
+        let names = Fixtures.ProjectNames("Solo")
+        let root = try makeTempDir()
+
+        let cliDir = root.appendingPathComponent(names.cli)
+        let hummingbirdDir = root.appendingPathComponent(names.hummingbird)
+        try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
+
+        try PackageSwiftGenerator(projectName: names.cli, cli: true).generate(to: cliDir)
+        try CLITemplate(targetName: names.cli, projectDir: cliDir).generate()
+
+        try HummingbirdTemplate(targetName: names.hummingbird, projectDir: hummingbirdDir).generate()
+
+        // Verify no Core directory
+        #expect(!dirExists(root, names.core))
+        #expect(dirExists(root, names.cli))
+        #expect(dirExists(root, names.hummingbird))
+
+        // Verify no core references in Package.swift files
+        let cliContent = try readFile(cliDir, "Package.swift")
+        let hummingbirdContent = try readFile(hummingbirdDir, "Package.swift")
+        #expect(!cliContent.contains(".package(path:"))
+        #expect(!hummingbirdContent.contains(".package(path:"))
+        #expect(!cliContent.contains(names.core))
+        #expect(!hummingbirdContent.contains(names.core))
+    }
 }
 
 // MARK: - GitIgnore Tests
@@ -925,9 +1012,26 @@ struct ProjectGeneratorTests {
         #expect(fileExists(projectDir, ".kolache.json"))
     }
 
-    // TODO: Re-enable once fork supports non-interactive flags for automated testing.
-    // HummingbirdTemplate.generate() now delegates to configure.sh (interactive).
-    // @Test("Single --hummingbird generates complete project via ProjectGenerator")
+    @Test("Single --hummingbird generates complete project via ProjectGenerator")
+    func singleHummingbirdEndToEnd() throws {
+        let projectName = "GenSrv"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            hummingbird: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        #expect(fileExists(projectDir, "Package.swift"))
+        #expect(fileExists(projectDir, "Sources/App/App.swift"))
+        #expect(fileExists(projectDir, "Dockerfile"))
+        #expect(fileExists(projectDir, ".github/workflows/ci.yml"))
+        #expect(fileExists(projectDir, "README.md"))
+        #expect(fileExists(projectDir, ".kolache.json"))
+    }
 
     @Test("--git creates .git directory and .gitignore")
     func gitFlagCreatesRepo() throws {
@@ -947,10 +1051,50 @@ struct ProjectGeneratorTests {
         #expect(fileExists(projectDir, ".gitignore"))
     }
 
-    // TODO: Re-enable once fork supports non-interactive flags for automated testing.
-    // HummingbirdTemplate.generate() now delegates to configure.sh (interactive).
-    // @Test("Multi-target with --package creates Core and wires dependencies")
-    // @Test("Multi-target without --package has no Core directory")
+    @Test("Multi-target with --package creates Core and wires dependencies")
+    func multiTargetWithPackage() throws {
+        let names = Fixtures.ProjectNames("Multi")
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: names.base,
+            baseDirectory: root,
+            package: true,
+            cli: true,
+            hummingbird: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(names.base)
+        #expect(dirExists(projectDir, names.core))
+        #expect(dirExists(projectDir, names.cli))
+        #expect(dirExists(projectDir, names.hummingbird))
+
+        let cliPkg = try readFile(projectDir.appendingPathComponent(names.cli), "Package.swift")
+        #expect(cliPkg.contains(".package(path: \"../\(names.core)\")"))
+
+        let hummingbirdPkg = try readFile(projectDir.appendingPathComponent(names.hummingbird), "Package.swift")
+        #expect(hummingbirdPkg.contains(".package(path: \"../\(names.core)\")"))
+    }
+
+    @Test("Multi-target without --package has no Core directory")
+    func multiTargetWithoutPackage() throws {
+        let names = Fixtures.ProjectNames("NoCore")
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: names.base,
+            baseDirectory: root,
+            cli: true,
+            hummingbird: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(names.base)
+        #expect(!dirExists(projectDir, names.core))
+        #expect(dirExists(projectDir, names.cli))
+        #expect(dirExists(projectDir, names.hummingbird))
+    }
 
     @Test("Manifest records correct flags")
     func manifestFlags() throws {
