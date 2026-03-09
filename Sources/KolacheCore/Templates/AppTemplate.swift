@@ -6,13 +6,11 @@ import Foundation
 public struct AppTemplate {
     public let targetName: String
     public let projectDir: URL
-    public let config: KolacheConfig
     public var corePackageName: String? = nil
 
-    public init(targetName: String, projectDir: URL, config: KolacheConfig, corePackageName: String? = nil) {
+    public init(targetName: String, projectDir: URL, corePackageName: String? = nil) {
         self.targetName = targetName
         self.projectDir = projectDir
-        self.config = config
         self.corePackageName = corePackageName
     }
 
@@ -60,8 +58,6 @@ public struct AppTemplate {
     // MARK: - project.yml
 
     var projectYML: String {
-        let bundleId = "\(config.bundleIdPrefix).\(targetName.lowercased())"
-
         let localPackagesSection = corePackageName.map { coreName in
             """
 
@@ -82,7 +78,6 @@ public struct AppTemplate {
         name: \(targetName)
 
         options:
-          bundleIdPrefix: \(config.bundleIdPrefix)
           deploymentTarget:
             iOS: "26.0"
             macOS: "26.0"
@@ -107,7 +102,6 @@ public struct AppTemplate {
               - path: \(targetName)\(coreDependency)
             settings:
               base:
-                PRODUCT_BUNDLE_IDENTIFIER: \(bundleId)
                 TARGETED_DEVICE_FAMILY: "1,2"
                 INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
                 INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
@@ -136,11 +130,6 @@ public struct AppTemplate {
 
     private var appSwift: String {
         """
-        //  \(targetName)App.swift
-        //  \(targetName)
-        //
-        //  Created by \(config.orgName)
-
         import SwiftUI
 
         @main
@@ -156,11 +145,6 @@ public struct AppTemplate {
 
     private var contentViewSwift: String {
         """
-        //  ContentView.swift
-        //  \(targetName)
-        //
-        //  Created by \(config.orgName)
-
         import SwiftUI
 
         struct ContentView: View {

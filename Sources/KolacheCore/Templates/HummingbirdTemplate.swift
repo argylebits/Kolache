@@ -6,12 +6,10 @@ import Foundation
 public struct HummingbirdTemplate {
     public let targetName: String
     public let projectDir: URL
-    public let config: KolacheConfig
 
-    public init(targetName: String, projectDir: URL, config: KolacheConfig) {
+    public init(targetName: String, projectDir: URL) {
         self.targetName = targetName
         self.projectDir = projectDir
-        self.config = config
     }
 
     public func generate() throws {
@@ -62,11 +60,6 @@ public struct HummingbirdTemplate {
 
     private var appSwift: String {
         """
-        //  App.swift
-        //  \(targetName)
-        //
-        //  Created by \(config.orgName)
-
         import Configuration
         import Hummingbird
         import Logging
@@ -92,11 +85,6 @@ public struct HummingbirdTemplate {
 
     private var appBuildSwift: String {
         """
-        //  App+build.swift
-        //  \(targetName)
-        //
-        //  Created by \(config.orgName)
-
         import Configuration
         import Hummingbird
         import Logging

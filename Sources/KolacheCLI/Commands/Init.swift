@@ -66,18 +66,15 @@ struct Init: ParsableCommand {
             try XcodeGenRunner.verifyOrInstall()
         }
 
-        // Load or create global config
-        let config = try KolacheConfig.loadOrCreate()
-
         // Always create the directory
         print("📁 Creating \"\(projectName)\"...")
         try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
 
         // Generate
         if isMultiTarget {
-            try generateMultiTarget(projectDir: projectDir, config: config)
+            try generateMultiTarget(projectDir: projectDir)
         } else {
-            try generateSingleTarget(projectDir: projectDir, config: config)
+            try generateSingleTarget(projectDir: projectDir)
         }
 
         // README
@@ -94,7 +91,7 @@ struct Init: ParsableCommand {
 
         // Always write .kolache.json
         print("📋 Writing .kolache.json...")
-        try writeKolacheProject(to: projectDir, config: config)
+        try writeKolacheProject(to: projectDir)
 
         // Git init
         if git {
@@ -110,13 +107,12 @@ struct Init: ParsableCommand {
 
     // MARK: - Single target generation
 
-    private func generateSingleTarget(projectDir: URL, config: KolacheConfig) throws {
+    private func generateSingleTarget(projectDir: URL) throws {
         if app {
             print("🔨 Adding SwiftUI app...")
             try AppTemplate(
                 targetName: projectName,
-                projectDir: projectDir,
-                config: config
+                projectDir: projectDir
             ).generate()
         } else if cli {
             print("📦 Adding CLI package...")
@@ -124,8 +120,7 @@ struct Init: ParsableCommand {
                 .generate(to: projectDir)
             try CLITemplate(
                 targetName: projectName,
-                projectDir: projectDir,
-                config: config
+                projectDir: projectDir
             ).generate()
         } else if hummingbird {
             print("📦 Adding Hummingbird server...")
@@ -133,8 +128,7 @@ struct Init: ParsableCommand {
                 .generate(to: projectDir)
             try HummingbirdTemplate(
                 targetName: projectName,
-                projectDir: projectDir,
-                config: config
+                projectDir: projectDir
             ).generate()
         } else if package {
             print("📦 Adding Swift library...")
@@ -142,15 +136,14 @@ struct Init: ParsableCommand {
                 .generate(to: projectDir)
             try PackageTemplate(
                 targetName: projectName,
-                projectDir: projectDir,
-                config: config
+                projectDir: projectDir
             ).generate()
         }
     }
 
     // MARK: - Multi target generation (sub-packages)
 
-    private func generateMultiTarget(projectDir: URL, config: KolacheConfig) throws {
+    private func generateMultiTarget(projectDir: URL) throws {
         let fm = FileManager.default
         var coreName: String? = nil
         var subPackages: [String] = []
@@ -167,8 +160,7 @@ struct Init: ParsableCommand {
                 .generate(to: coreDir)
             try PackageTemplate(
                 targetName: name,
-                projectDir: coreDir,
-                config: config
+                projectDir: coreDir
             ).generate()
             subPackages.append(name)
         }
@@ -182,7 +174,6 @@ struct Init: ParsableCommand {
             try AppTemplate(
                 targetName: projectName,
                 projectDir: appDir,
-                config: config,
                 corePackageName: coreName
             ).generate()
             subPackages.append(projectName)
@@ -199,8 +190,7 @@ struct Init: ParsableCommand {
                 .generate(to: cliDir)
             try CLITemplate(
                 targetName: cliName,
-                projectDir: cliDir,
-                config: config
+                projectDir: cliDir
             ).generate()
             subPackages.append(cliName)
         }
@@ -216,8 +206,7 @@ struct Init: ParsableCommand {
                 .generate(to: serverDir)
             try HummingbirdTemplate(
                 targetName: serverName,
-                projectDir: serverDir,
-                config: config
+                projectDir: serverDir
             ).generate()
             subPackages.append(serverName)
         }
@@ -295,7 +284,7 @@ struct Init: ParsableCommand {
 
     // MARK: - .kolache.json
 
-    private func writeKolacheProject(to directory: URL, config: KolacheConfig) throws {
+    private func writeKolacheProject(to directory: URL) throws {
         var flags: [String] = []
         if package    { flags.append("package") }
         if app        { flags.append("app") }

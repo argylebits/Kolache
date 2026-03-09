@@ -6,8 +6,6 @@ import Testing
 
 /// Shared test configuration and naming conventions used across all tests.
 private enum Fixtures {
-    static let config = KolacheConfig(orgName: "Test Org", bundleIdPrefix: "com.test")
-
     /// Generates consistent names for a project with the given base name.
     struct ProjectNames {
         let base: String
@@ -209,8 +207,7 @@ struct AppTemplateTests {
         let targetName = "MyApp"
         let template = AppTemplate(
             targetName: targetName,
-            projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Fixtures.config
+            projectDir: URL(fileURLWithPath: "/tmp")
         )
         let yml = template.projectYML
 
@@ -227,7 +224,6 @@ struct AppTemplateTests {
         let template = AppTemplate(
             targetName: targetName,
             projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Fixtures.config,
             corePackageName: coreName
         )
         let yml = template.projectYML
@@ -237,17 +233,17 @@ struct AppTemplateTests {
         #expect(yml.contains("package: \(coreName)"))
     }
 
-    @Test("project.yml uses bundleIdPrefix from config")
-    func bundleIdFromConfig() {
+    @Test("project.yml does not include bundleIdPrefix")
+    func noBundleIdPrefix() {
         let targetName = "MyApp"
         let template = AppTemplate(
             targetName: targetName,
-            projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Fixtures.config
+            projectDir: URL(fileURLWithPath: "/tmp")
         )
         let yml = template.projectYML
 
-        #expect(yml.contains("bundleIdPrefix: \(Fixtures.config.bundleIdPrefix)"))
+        #expect(!yml.contains("bundleIdPrefix"))
+        #expect(!yml.contains("PRODUCT_BUNDLE_IDENTIFIER"))
     }
 
     @Test("Target name is used as-is, no suffix added")
@@ -255,8 +251,7 @@ struct AppTemplateTests {
         let targetName = "Pinstripes"
         let template = AppTemplate(
             targetName: targetName,
-            projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Fixtures.config
+            projectDir: URL(fileURLWithPath: "/tmp")
         )
         let yml = template.projectYML
 
@@ -271,8 +266,7 @@ struct AppTemplateTests {
         let dir = try makeTempDir()
         try AppTemplate(
             targetName: targetName,
-            projectDir: dir,
-            config: Fixtures.config
+            projectDir: dir
         ).generate()
 
         let contentView = try readFile(dir, "\(targetName)/ContentView.swift")
@@ -294,11 +288,11 @@ struct TemplateTests {
     func packageTemplate() throws {
         let targetName = "MyLib"
         let dir = try makeTempDir()
-        try PackageTemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
+        try PackageTemplate(targetName: targetName, projectDir: dir).generate()
 
         let source = try readFile(dir, "Sources/\(targetName)/\(targetName).swift")
         #expect(source.contains("public struct \(targetName)"))
-        #expect(source.contains("Created by \(Fixtures.config.orgName)"))
+        #expect(!source.contains("Created by"))
 
         let test = try readFile(dir, "Tests/\(targetName)Tests/\(targetName)Tests.swift")
         #expect(test.contains("@testable import \(targetName)"))
@@ -309,7 +303,7 @@ struct TemplateTests {
     func cliTemplate() throws {
         let targetName = "MyCLI"
         let dir = try makeTempDir()
-        try CLITemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
+        try CLITemplate(targetName: targetName, projectDir: dir).generate()
 
         let source = try readFile(dir, "Sources/\(targetName)/\(targetName).swift")
         #expect(source.contains("import ArgumentParser"))
@@ -324,7 +318,7 @@ struct TemplateTests {
     func coreNamingConvention() throws {
         let targetName = "FooCore"
         let dir = try makeTempDir()
-        try PackageTemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
+        try PackageTemplate(targetName: targetName, projectDir: dir).generate()
 
         let source = try readFile(dir, "Sources/\(targetName)/\(targetName).swift")
         #expect(source.contains("public struct \(targetName)"))
@@ -337,7 +331,7 @@ struct TemplateTests {
     func hummingbirdTemplate() throws {
         let targetName = "MySrv"
         let dir = try makeTempDir()
-        try HummingbirdTemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
+        try HummingbirdTemplate(targetName: targetName, projectDir: dir).generate()
 
         let app = try readFile(dir, "Sources/\(targetName)/App.swift")
         #expect(app.contains("import Hummingbird"))
@@ -374,7 +368,7 @@ struct SingleTargetIntegrationTests {
         let projectName = "MyLib"
         let dir = try makeTempDir()
         try PackageSwiftGenerator(projectName: projectName, package: true).generate(to: dir)
-        try PackageTemplate(targetName: projectName, projectDir: dir, config: Fixtures.config).generate()
+        try PackageTemplate(targetName: projectName, projectDir: dir).generate()
 
         #expect(fileExists(dir, "Package.swift"))
         #expect(fileExists(dir, "Sources/\(projectName)/\(projectName).swift"))
@@ -387,7 +381,7 @@ struct SingleTargetIntegrationTests {
         let projectName = "MyCLI"
         let dir = try makeTempDir()
         try PackageSwiftGenerator(projectName: projectName, cli: true).generate(to: dir)
-        try CLITemplate(targetName: projectName, projectDir: dir, config: Fixtures.config).generate()
+        try CLITemplate(targetName: projectName, projectDir: dir).generate()
 
         #expect(fileExists(dir, "Package.swift"))
         #expect(fileExists(dir, "Sources/\(projectName)/\(projectName).swift"))
@@ -401,7 +395,7 @@ struct SingleTargetIntegrationTests {
         let projectName = "MySrv"
         let dir = try makeTempDir()
         try PackageSwiftGenerator(projectName: projectName, hummingbird: true).generate(to: dir)
-        try HummingbirdTemplate(targetName: projectName, projectDir: dir, config: Fixtures.config).generate()
+        try HummingbirdTemplate(targetName: projectName, projectDir: dir).generate()
 
         #expect(fileExists(dir, "Package.swift"))
         #expect(fileExists(dir, "Sources/\(projectName)/App.swift"))
@@ -431,13 +425,13 @@ struct MultiTargetWithPackageTests {
         }
 
         try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
-        try PackageTemplate(targetName: names.core, projectDir: coreDir, config: Fixtures.config).generate()
+        try PackageTemplate(targetName: names.core, projectDir: coreDir).generate()
 
         try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
-        try CLITemplate(targetName: names.cli, projectDir: cliDir, config: Fixtures.config).generate()
+        try CLITemplate(targetName: names.cli, projectDir: cliDir).generate()
 
         try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
-        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir, config: Fixtures.config).generate()
+        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir).generate()
 
         #expect(dirExists(root, names.core))
         #expect(dirExists(root, names.cli))
@@ -532,7 +526,6 @@ struct MultiTargetWithPackageTests {
         let template = AppTemplate(
             targetName: projectName,
             projectDir: appDir,
-            config: Fixtures.config,
             corePackageName: names.core
         )
 
@@ -559,13 +552,13 @@ struct MultiTargetWithPackageTests {
         }
 
         try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
-        try PackageTemplate(targetName: names.core, projectDir: coreDir, config: Fixtures.config).generate()
+        try PackageTemplate(targetName: names.core, projectDir: coreDir).generate()
 
         try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
-        try CLITemplate(targetName: names.cli, projectDir: cliDir, config: Fixtures.config).generate()
+        try CLITemplate(targetName: names.cli, projectDir: cliDir).generate()
 
         try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
-        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir, config: Fixtures.config).generate()
+        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir).generate()
 
         #expect(fileExists(coreDir, "Package.swift"))
         #expect(fileExists(coreDir, "Sources/\(names.core)/\(names.core).swift"))
@@ -604,7 +597,6 @@ struct MultiTargetWithoutPackageTests {
         let template = AppTemplate(
             targetName: projectName,
             projectDir: appDir,
-            config: Fixtures.config,
             corePackageName: nil
         )
         let yml = template.projectYML
@@ -625,10 +617,10 @@ struct MultiTargetWithoutPackageTests {
         try FileManager.default.createDirectory(at: serverDir, withIntermediateDirectories: true)
 
         try PackageSwiftGenerator(projectName: names.cli, cli: true).generate(to: cliDir)
-        try CLITemplate(targetName: names.cli, projectDir: cliDir, config: Fixtures.config).generate()
+        try CLITemplate(targetName: names.cli, projectDir: cliDir).generate()
 
         try PackageSwiftGenerator(projectName: names.server, hummingbird: true).generate(to: serverDir)
-        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir, config: Fixtures.config).generate()
+        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir).generate()
 
         // Verify no Core directory
         #expect(!dirExists(root, names.core))

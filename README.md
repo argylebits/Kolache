@@ -8,7 +8,7 @@ A Swift CLI for project scaffolding. One command, ready-to-work project.
 > the templates are the fillings. Same process, different output.
 
 ```bash
-kolache init MyApp --app --cli --git
+kolache init MyApp --app --cli --package --git
 ```
 
 Kolache handles the stuff that `swift package init` and XcodeGen don't —
@@ -24,30 +24,13 @@ swift build -c release
 cp .build/release/kolache ~/bin/kolache
 ```
 
-## First Run
-
-On first use, kolache prompts for global configuration:
-
-```
-👋 Welcome to kolache! Let's set up your configuration.
-
-Organisation name (e.g. Your Name or Company): Argyle Bits LLC
-Bundle ID prefix (e.g. com.yourname): com.argylebits
-```
-
-Saved to `~/.kolache/config.json`. View or reset anytime with `kolache config`.
-
 ---
 
-## Commands
+## Usage
 
 ### `kolache init <Name> [flags]`
 
 Creates a new project directory with the structure determined by your flags.
-
-### `kolache config`
-
-View global configuration. Use `--reset` to re-enter values.
 
 ---
 
@@ -60,6 +43,9 @@ automatically creates a multi-package project with isolated dependencies.
 ### `--package`
 
 Swift library with Sources, Tests, and a `Package.swift`.
+
+When combined with other flags, `--package` creates a shared `<Name>Core/`
+library that sibling packages depend on.
 
 ```
 MyLib/
@@ -127,12 +113,21 @@ MyApp/
 ```
 
 No `Package.swift` — the app is Xcode-only. XcodeGen is auto-installed
-(via Homebrew) on first use if not present.
+(via Homebrew) on first use if not present. Team, signing, and bundle ID
+are configured in Xcode after opening the project, just like a normal
+Xcode project.
 
 ### `--git`
 
-Initializes a git repository with a `.gitignore` and an initial commit.
-If already inside a git repo, this flag is silently skipped with a notice.
+Initializes a git repository with a `.gitignore`. Does not stage or commit
+files — that's left to you.
+
+### `--force`
+
+Delete the existing project directory and recreate it from scratch.
+
+**WARNING:** This permanently deletes all files in the directory. Use with
+caution.
 
 ### No flags
 
@@ -160,29 +155,26 @@ each sub-package only imports what it uses.
 
 ### How it works
 
-When two or more generation flags are combined, kolache automatically:
-
-1. Creates a `<Name>Core/` shared library (always)
-2. Creates a sub-directory for each flag
-3. Generates a `Package.swift` in each sub-directory with only its own deps
-4. Wires each sub-package to Core via `path: "../<Name>Core"`
+When two or more generation flags are combined, kolache creates a sub-directory
+for each flag. If `--package` is included, it also creates a `<Name>Core/`
+shared library and wires each sibling package to it via
+`path: "../<Name>Core"`.
 
 ### Naming
 
 | Flag            | Single-flag name | Multi-flag sub-directory |
 |-----------------|------------------|-------------------------|
-| `--package`     | `<Name>/`        | (triggers Core)         |
+| `--package`     | `<Name>/`        | `<Name>Core/`           |
 | `--cli`         | `<Name>/`        | `<Name>CLI/`            |
 | `--hummingbird` | `<Name>/`        | `<Name>Server/`         |
 | `--app`         | `<Name>/`        | `<Name>/`               |
-| (core)          | —                | `<Name>Core/`           |
 
 The app sub-package keeps the project name (no suffix) since it's the
 primary deliverable in most projects.
 
 ### Examples
 
-#### `kolache init Pinstripes --app --hummingbird --git`
+#### `kolache init Pinstripes --app --hummingbird --package --git`
 
 ```
 Pinstripes/
@@ -219,18 +211,17 @@ dependencies: [
 
 #### `kolache init Tools --cli --hummingbird`
 
+Without `--package`, no Core library is created. Each sub-package is
+independent with its own dependencies:
+
 ```
 Tools/
-├── ToolsCore/
-│   ├── Package.swift
-│   ├── Sources/ToolsCore/
-│   └── Tests/ToolsCoreTests/
 ├── ToolsCLI/
-│   ├── Package.swift              ← ArgumentParser + ../ToolsCore
+│   ├── Package.swift              ← ArgumentParser only
 │   ├── Sources/ToolsCLI/
 │   └── Tests/ToolsCLITests/
 ├── ToolsServer/
-│   ├── Package.swift              ← Hummingbird + ../ToolsCore
+│   ├── Package.swift              ← Hummingbird only
 │   ├── Sources/ToolsServer/
 │   ├── Tests/ToolsServerTests/
 │   └── Dockerfile
@@ -238,19 +229,16 @@ Tools/
 └── .kolache.json
 ```
 
-CLI gets ArgumentParser. Server gets Hummingbird. Neither pulls in the
-other's dependencies. Both share code through `ToolsCore`.
-
-#### `kolache init Atlas --app --cli --hummingbird --git`
+#### `kolache init Atlas --app --cli --hummingbird --package --git`
 
 All four sub-packages: Core, app, CLI, and server.
 
 ```
 Atlas/
-├── AtlasCore/
-├── Atlas/                ← SwiftUI app
-├── AtlasCLI/             ← CLI tool
-├── AtlasServer/          ← Hummingbird server
+├── AtlasCore/            ← shared library
+├── Atlas/                ← SwiftUI app (depends on Core)
+├── AtlasCLI/             ← CLI tool (depends on Core)
+├── AtlasServer/          ← Hummingbird server (depends on Core)
 ├── README.md
 ├── .gitignore
 └── .kolache.json
@@ -258,17 +246,18 @@ Atlas/
 
 ---
 
-## Git Context Detection
+## Project Manifest
 
-If `kolache init` is run inside an existing git repository, `--git` is
-silently skipped with a notice. This allows kolache to scaffold new
-packages inside a monorepo without creating nested git repos.
+A `.kolache.json` file is written at the project root on every `kolache init`.
+It records the project name, which flags were used, and when it was created.
 
-```bash
-cd my-monorepo        # already a git repo
-kolache init NewLib --package --git
-# ⚠️  Already inside a git repository — skipping git init.
-# Creates NewLib/ with Package.swift, Sources, Tests — no .git, no .gitignore
+```json
+{
+  "version": "1.0",
+  "projectName": "Pinstripes",
+  "flags": ["package", "app", "hummingbird", "git"],
+  "createdAt": "2026-03-02T21:38:07Z"
+}
 ```
 
 ---
@@ -288,19 +277,16 @@ Kolache/
 │   │   │   ├── KolacheError.swift
 │   │   │   └── XcodeGenRunner.swift
 │   │   ├── Models/
-│   │   │   ├── KolacheConfig.swift
 │   │   │   └── KolacheProject.swift
 │   │   └── Templates/
 │   │       ├── AppTemplate.swift
 │   │       ├── CLITemplate.swift
-│   │       ├── CoreTemplate.swift
 │   │       ├── HummingbirdTemplate.swift
 │   │       ├── PackageSwiftGenerator.swift
 │   │       └── PackageTemplate.swift
 │   └── KolacheCLI/               ← thin ArgumentParser wrapper
 │       ├── Kolache.swift
 │       └── Commands/
-│           ├── Config.swift
 │           └── Init.swift
 └── Tests/
     └── KolacheCoreTests/
@@ -313,35 +299,6 @@ variations, and errors flow through `KolacheError`.
 
 **KolacheCLI** is a thin shell — it parses flags, resolves multi-target
 detection, and delegates to KolacheCore.
-
----
-
-## Configuration
-
-### Global — `~/.kolache/config.json`
-
-```json
-{
-  "orgName": "Argyle Bits LLC",
-  "bundleIdPrefix": "com.argylebits"
-}
-```
-
-Used for file headers (`Created by ...`) and Xcode bundle identifiers.
-
-### Per-project — `.kolache.json`
-
-Written at the project root on every `kolache init`. Records the project
-name, which flags were used, and when it was created.
-
-```json
-{
-  "version": "1.0",
-  "projectName": "Pinstripes",
-  "flags": ["app", "hummingbird", "git"],
-  "createdAt": "2026-03-02T21:38:07Z"
-}
-```
 
 ---
 
