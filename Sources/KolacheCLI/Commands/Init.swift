@@ -156,22 +156,26 @@ struct Init: ParsableCommand {
 
     private func generateMultiTarget(projectDir: URL, config: KolacheConfig) throws {
         let fm = FileManager.default
-        let coreName = "\(projectName)Core"
+        var coreName: String? = nil
+        var subPackages: [String] = []
 
-        // Core sub-package — always created in multi-target
-        let coreDir = projectDir.appendingPathComponent(coreName)
-        print("📁 Creating \"\(coreName)\"...")
-        try fm.createDirectory(at: coreDir, withIntermediateDirectories: true)
-        print("📦 Adding Core package...")
-        try PackageSwiftGenerator(projectName: coreName, package: true)
-            .generate(to: coreDir)
-        try CoreTemplate(
-            targetName: coreName,
-            projectDir: coreDir,
-            config: config
-        ).generate()
-
-        var subPackages = [coreName]
+        // Core sub-package — only created when --package is passed
+        if package {
+            let name = "\(projectName)Core"
+            coreName = name
+            let coreDir = projectDir.appendingPathComponent(name)
+            print("📁 Creating \"\(name)\"...")
+            try fm.createDirectory(at: coreDir, withIntermediateDirectories: true)
+            print("📦 Adding Core package...")
+            try PackageSwiftGenerator(projectName: name, package: true)
+                .generate(to: coreDir)
+            try PackageTemplate(
+                targetName: name,
+                projectDir: coreDir,
+                config: config
+            ).generate()
+            subPackages.append(name)
+        }
 
         // App sub-package (uses project name, not suffixed)
         if app {

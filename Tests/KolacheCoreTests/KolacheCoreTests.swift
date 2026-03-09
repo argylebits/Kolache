@@ -250,10 +250,10 @@ struct TemplateTests {
         #expect(test.contains("@testable import MyCLI"))
     }
 
-    @Test("CoreTemplate generates source and test files")
-    func coreTemplate() throws {
+    @Test("PackageTemplate works for Core naming convention")
+    func coreNamingConvention() throws {
         let dir = try makeTempDir()
-        try CoreTemplate(targetName: "FooCore", projectDir: dir, config: Self.testConfig).generate()
+        try PackageTemplate(targetName: "FooCore", projectDir: dir, config: Self.testConfig).generate()
 
         let source = try readFile(dir, "Sources/FooCore/FooCore.swift")
         #expect(source.contains("public struct FooCore"))
@@ -356,7 +356,7 @@ struct MultiTargetIntegrationTests {
         let coreDir = root.appendingPathComponent(coreName)
         try FileManager.default.createDirectory(at: coreDir, withIntermediateDirectories: true)
         try PackageSwiftGenerator(projectName: coreName, package: true).generate(to: coreDir)
-        try CoreTemplate(targetName: coreName, projectDir: coreDir, config: Self.testConfig).generate()
+        try PackageTemplate(targetName: coreName, projectDir: coreDir, config: Self.testConfig).generate()
 
         // CLI
         let cliDir = root.appendingPathComponent(cliName)
@@ -494,7 +494,7 @@ struct MultiTargetIntegrationTests {
         // Core
         let coreDir = root.appendingPathComponent(coreName)
         try PackageSwiftGenerator(projectName: coreName, package: true).generate(to: coreDir)
-        try CoreTemplate(targetName: coreName, projectDir: coreDir, config: Self.testConfig).generate()
+        try PackageTemplate(targetName: coreName, projectDir: coreDir, config: Self.testConfig).generate()
 
         // CLI
         let cliDir = root.appendingPathComponent("\(name)CLI")
@@ -514,6 +514,36 @@ struct MultiTargetIntegrationTests {
         #expect(fileExists(serverDir, "Package.swift"))
         #expect(fileExists(serverDir, "Sources/FullServer/App.swift"))
         #expect(fileExists(serverDir, "Dockerfile"))
+    }
+
+    @Test("--cli --hummingbird without --package: no Core sub-directory")
+    func noPackageNoCoreDir() throws {
+        let root = try makeTempDir()
+        let cliName = "NoCLI"
+        let serverName = "NoServer"
+
+        // CLI (no corePackageName)
+        let cliDir = root.appendingPathComponent(cliName)
+        try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
+        try PackageSwiftGenerator(projectName: cliName, cli: true).generate(to: cliDir)
+        try CLITemplate(targetName: cliName, projectDir: cliDir, config: Self.testConfig).generate()
+
+        // Server (no corePackageName)
+        let serverDir = root.appendingPathComponent(serverName)
+        try FileManager.default.createDirectory(at: serverDir, withIntermediateDirectories: true)
+        try PackageSwiftGenerator(projectName: serverName, hummingbird: true).generate(to: serverDir)
+        try HummingbirdTemplate(targetName: serverName, projectDir: serverDir, config: Self.testConfig).generate()
+
+        // Verify no Core directory
+        #expect(!dirExists(root, "NoCore"))
+        #expect(dirExists(root, cliName))
+        #expect(dirExists(root, serverName))
+
+        // Verify no core references in Package.swift files
+        let cliContent = try readFile(cliDir, "Package.swift")
+        let serverContent = try readFile(serverDir, "Package.swift")
+        #expect(!cliContent.contains(".package(path:"))
+        #expect(!serverContent.contains(".package(path:"))
     }
 
     @Test("Multi-target has no Package.swift at project root")
