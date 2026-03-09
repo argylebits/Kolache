@@ -27,21 +27,10 @@ public enum Git {
     }
 
     public static func initialize(at url: URL) throws {
-        try run(["init"], at: url)
-        try run(["add", "."], at: url)
-        try run(["commit", "-m", "Initial commit"], at: url)
-    }
-
-    /// Returns true if the given directory is already inside a git repository.
-    public static func isInsideRepo(at url: URL) -> Bool {
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
-        process.arguments = ["rev-parse", "--is-inside-work-tree"]
-        process.currentDirectoryURL = url
-        process.standardOutput = Pipe()
-        process.standardError = Pipe()
-        try? process.run()
-        process.waitUntilExit()
-        return process.terminationStatus == 0
+        let output = try run(["init"], at: url)
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            print("    \(trimmed)")
+        }
     }
 }

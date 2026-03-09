@@ -5,7 +5,6 @@ import Foundation
 /// each with its own isolated dependencies and an optional path reference to Core.
 public struct PackageSwiftGenerator {
     public let projectName: String
-    public let app: Bool
     public let cli: Bool
     public let hummingbird: Bool
     public let package: Bool
@@ -13,14 +12,12 @@ public struct PackageSwiftGenerator {
 
     public init(
         projectName: String,
-        app: Bool = false,
         cli: Bool = false,
         hummingbird: Bool = false,
         package: Bool = false,
         corePackageName: String? = nil
     ) {
         self.projectName = projectName
-        self.app = app
         self.cli = cli
         self.hummingbird = hummingbird
         self.package = package

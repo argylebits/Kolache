@@ -48,18 +48,6 @@ struct Init: ParsableCommand {
             throw KolacheError.projectExists(projectName)
         }
 
-        // Detect if already inside a git repo
-        let alreadyInRepo = Git.isInsideRepo(at: cwd)
-        let shouldInitGit = git && !alreadyInRepo
-
-        if git && alreadyInRepo {
-            print("⚠️  Already inside a git repository — skipping git init.")
-        }
-
-        if isMultiTarget && !hasAnyFlag {
-            // Multi-target requires at least one generation flag
-        }
-
         // Print notice for auto-detected multi-target
         if isMultiTarget {
             print("ℹ️  Multiple flags detected — creating sub-packages.")
@@ -90,8 +78,8 @@ struct Init: ParsableCommand {
             try writeREADME(to: projectDir)
         }
 
-        // Git ignore — only for new top-level repos
-        if shouldInitGit {
+        // Git ignore
+        if git {
             print("📝 Writing .gitignore...")
             try GitIgnore.write(to: projectDir)
         }
@@ -101,7 +89,7 @@ struct Init: ParsableCommand {
         try writeKolacheProject(to: projectDir, config: config)
 
         // Git init
-        if shouldInitGit {
+        if git {
             print("🗂  Initializing git repository...")
             try Git.initialize(at: projectDir)
         }
