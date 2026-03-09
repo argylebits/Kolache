@@ -790,6 +790,215 @@ struct KolacheProjectTests {
     }
 }
 
+@Suite("ProjectGenerator")
+struct ProjectGeneratorTests {
+
+    @Test("Throws projectExists when directory already exists")
+    func projectAlreadyExists() throws {
+        let projectName = "Existing"
+        let root = try makeTempDir()
+        let projectDir = root.appendingPathComponent(projectName)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root
+        )
+
+        #expect(throws: KolacheError.self) {
+            try generator.generate()
+        }
+    }
+
+    @Test("--force removes existing directory and succeeds")
+    func forceRemovesExisting() throws {
+        let projectName = "ForceTest"
+        let root = try makeTempDir()
+        let projectDir = root.appendingPathComponent(projectName)
+        try FileManager.default.createDirectory(at: projectDir, withIntermediateDirectories: true)
+        try "old".write(to: projectDir.appendingPathComponent("marker.txt"), atomically: true, encoding: .utf8)
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            package: true,
+            force: true
+        )
+        try generator.generate()
+
+        #expect(!fileExists(projectDir, "marker.txt"))
+        #expect(fileExists(projectDir, "Package.swift"))
+    }
+
+    @Test("No flags creates only .kolache.json in project directory")
+    func noFlagsOnlyManifest() throws {
+        let projectName = "Bare"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        #expect(fileExists(projectDir, ".kolache.json"))
+        #expect(!fileExists(projectDir, "Package.swift"))
+        #expect(!fileExists(projectDir, "README.md"))
+        #expect(!dirExists(projectDir, "Sources"))
+        #expect(!dirExists(projectDir, ".git"))
+    }
+
+    @Test("Single --package generates complete project via ProjectGenerator")
+    func singlePackageEndToEnd() throws {
+        let projectName = "GenLib"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            package: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        #expect(fileExists(projectDir, "Package.swift"))
+        #expect(fileExists(projectDir, "Sources/\(projectName)/\(projectName).swift"))
+        #expect(fileExists(projectDir, "Tests/\(projectName)Tests/\(projectName)Tests.swift"))
+        #expect(fileExists(projectDir, "README.md"))
+        #expect(fileExists(projectDir, ".kolache.json"))
+    }
+
+    @Test("Single --cli generates complete project via ProjectGenerator")
+    func singleCLIEndToEnd() throws {
+        let projectName = "GenCLI"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            cli: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        #expect(fileExists(projectDir, "Package.swift"))
+        #expect(fileExists(projectDir, "Sources/\(projectName)/\(projectName).swift"))
+        #expect(fileExists(projectDir, "README.md"))
+        #expect(fileExists(projectDir, ".kolache.json"))
+    }
+
+    @Test("Single --hummingbird generates complete project via ProjectGenerator")
+    func singleHummingbirdEndToEnd() throws {
+        let projectName = "GenSrv"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            hummingbird: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        #expect(fileExists(projectDir, "Package.swift"))
+        #expect(fileExists(projectDir, "Sources/\(projectName)/App.swift"))
+        #expect(fileExists(projectDir, "Dockerfile"))
+        #expect(fileExists(projectDir, ".github/workflows/ci.yml"))
+        #expect(fileExists(projectDir, "README.md"))
+        #expect(fileExists(projectDir, ".kolache.json"))
+    }
+
+    @Test("--git creates .git directory and .gitignore")
+    func gitFlagCreatesRepo() throws {
+        let projectName = "GitTest"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            package: true,
+            git: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        #expect(dirExists(projectDir, ".git"))
+        #expect(fileExists(projectDir, ".gitignore"))
+    }
+
+    @Test("Multi-target with --package creates Core and wires dependencies")
+    func multiTargetWithPackage() throws {
+        let names = Fixtures.ProjectNames("Multi")
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: names.base,
+            baseDirectory: root,
+            package: true,
+            cli: true,
+            hummingbird: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(names.base)
+        #expect(dirExists(projectDir, names.core))
+        #expect(dirExists(projectDir, names.cli))
+        #expect(dirExists(projectDir, names.server))
+
+        let cliPkg = try readFile(projectDir.appendingPathComponent(names.cli), "Package.swift")
+        #expect(cliPkg.contains(".package(path: \"../\(names.core)\")"))
+
+        let serverPkg = try readFile(projectDir.appendingPathComponent(names.server), "Package.swift")
+        #expect(serverPkg.contains(".package(path: \"../\(names.core)\")"))
+    }
+
+    @Test("Multi-target without --package has no Core directory")
+    func multiTargetWithoutPackage() throws {
+        let names = Fixtures.ProjectNames("NoCore")
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: names.base,
+            baseDirectory: root,
+            cli: true,
+            hummingbird: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(names.base)
+        #expect(!dirExists(projectDir, names.core))
+        #expect(dirExists(projectDir, names.cli))
+        #expect(dirExists(projectDir, names.server))
+    }
+
+    @Test("Manifest records correct flags")
+    func manifestFlags() throws {
+        let projectName = "Flagged"
+        let root = try makeTempDir()
+
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: root,
+            package: true,
+            cli: true,
+            git: true
+        )
+        try generator.generate()
+
+        let projectDir = root.appendingPathComponent(projectName)
+        let data = try Data(contentsOf: projectDir.appendingPathComponent(".kolache.json"))
+        let manifest = try JSONDecoder().decode(KolacheProject.self, from: data)
+
+        #expect(manifest.projectName == projectName)
+        #expect(manifest.flags.contains("package"))
+        #expect(manifest.flags.contains("cli"))
+        #expect(manifest.flags.contains("git"))
+        #expect(!manifest.flags.contains("app"))
+        #expect(!manifest.flags.contains("hummingbird"))
+    }
+}
+
 @Suite("KolacheError")
 struct KolacheErrorTests {
 
@@ -830,9 +1039,16 @@ struct KolacheErrorTests {
 
 // MARK: - Helpers
 
+/// Shared root for all test temp directories. Cleaned up at the start of each test run.
+private let testRoot: URL = {
+    let root = FileManager.default.temporaryDirectory.appendingPathComponent("kolache-tests")
+    try? FileManager.default.removeItem(at: root)
+    try? FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+    return root
+}()
+
 private func makeTempDir() throws -> URL {
-    let dir = FileManager.default.temporaryDirectory
-        .appendingPathComponent("kolache-tests-\(UUID().uuidString)")
+    let dir = testRoot.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
     return dir
 }

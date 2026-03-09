@@ -29,202 +29,26 @@ struct Init: ParsableCommand {
     @Flag(name: .customLong("force"), help: "Delete the existing project directory and recreate it from scratch. WARNING: This permanently deletes all files in the directory.")
     var force: Bool = false
 
-    // MARK: - Computed properties
-
-    /// Whether this generates multiple targets.
-    private var isMultiTarget: Bool {
-        PackageSwiftGenerator.isMultiTarget(package: package, app: app, cli: cli, hummingbird: hummingbird)
-    }
-
-    /// Whether any generation flag is set.
-    private var hasAnyFlag: Bool {
-        package || app || cli || hummingbird
-    }
-
-
     func run() throws {
-        let fm = FileManager.default
-        let cwd = URL(fileURLWithPath: fm.currentDirectoryPath)
-        let projectDir = cwd.appendingPathComponent(projectName)
-
-        if fm.fileExists(atPath: projectDir.path) {
-            if force {
-                print("⚠️  --force: Deleting existing \"\(projectName)\" directory...")
-                try fm.removeItem(at: projectDir)
-            } else {
-                throw KolacheError.projectExists(projectName)
-            }
-        }
-
-        // Print notice for auto-detected multi-target
-        if isMultiTarget {
-            print("ℹ️  Multiple flags detected — creating sub-packages.")
-        }
-
-        // Check xcodegen before doing any work
-        if app {
-            try XcodeGenRunner.verifyOrInstall()
-        }
-
-        // Always create the directory
-        print("📁 Creating \"\(projectName)\"...")
-        try fm.createDirectory(at: projectDir, withIntermediateDirectories: true)
-
-        // Generate
-        if isMultiTarget {
-            try generateMultiTarget(projectDir: projectDir)
-        } else {
-            try generateSingleTarget(projectDir: projectDir)
-        }
-
-        // README
-        if hasAnyFlag {
-            print("📝 Writing README.md...")
-            try writeREADME(to: projectDir)
-        }
-
-        // Git ignore
-        if git {
-            print("📝 Writing .gitignore...")
-            try GitIgnore.write(to: projectDir)
-        }
-
-        // Always write .kolache.json
-        print("📋 Writing .kolache.json...")
-        try writeKolacheProject(to: projectDir)
-
-        // Git init
-        if git {
-            print("🗂  Initializing git repository...")
-            try Git.initialize(at: projectDir)
-        }
-
-        // Done
-        print("")
-        print("✅ \(projectName) is ready.")
-        printNextSteps()
+        let generator = ProjectGenerator(
+            projectName: projectName,
+            baseDirectory: URL(fileURLWithPath: FileManager.default.currentDirectoryPath),
+            package: package,
+            app: app,
+            cli: cli,
+            hummingbird: hummingbird,
+            git: git,
+            force: force
+        )
+        try generator.generate()
+        printNextSteps(generator: generator)
     }
 
-    // MARK: - Single target generation
-
-    private func generateSingleTarget(projectDir: URL) throws {
-        if app {
-            print("🔨 Adding SwiftUI app...")
-            try AppTemplate(
-                targetName: projectName,
-                projectDir: projectDir
-            ).generate()
-        } else if cli {
-            print("📦 Adding CLI package...")
-            try PackageSwiftGenerator(projectName: projectName, cli: true)
-                .generate(to: projectDir)
-            try CLITemplate(
-                targetName: projectName,
-                projectDir: projectDir
-            ).generate()
-        } else if hummingbird {
-            print("📦 Adding Hummingbird server...")
-            try PackageSwiftGenerator(projectName: projectName, hummingbird: true)
-                .generate(to: projectDir)
-            try HummingbirdTemplate(
-                targetName: projectName,
-                projectDir: projectDir
-            ).generate()
-        } else if package {
-            print("📦 Adding Swift library...")
-            try PackageSwiftGenerator(projectName: projectName, package: true)
-                .generate(to: projectDir)
-            try PackageTemplate(
-                targetName: projectName,
-                projectDir: projectDir
-            ).generate()
-        }
-    }
-
-    // MARK: - Multi target generation (sub-packages)
-
-    private func generateMultiTarget(projectDir: URL) throws {
-        let fm = FileManager.default
-        var coreName: String? = nil
-        var subPackages: [String] = []
-
-        // Core sub-package — only created when --package is passed
-        if package {
-            let name = "\(projectName)Core"
-            coreName = name
-            let coreDir = projectDir.appendingPathComponent(name)
-            print("📁 Creating \"\(name)\"...")
-            try fm.createDirectory(at: coreDir, withIntermediateDirectories: true)
-            print("📦 Adding Core package...")
-            try PackageSwiftGenerator(projectName: name, package: true)
-                .generate(to: coreDir)
-            try PackageTemplate(
-                targetName: name,
-                projectDir: coreDir
-            ).generate()
-            subPackages.append(name)
-        }
-
-        // App sub-package (uses project name, not suffixed)
-        if app {
-            let appDir = projectDir.appendingPathComponent(projectName)
-            print("📁 Creating \"\(projectName)\"...")
-            try fm.createDirectory(at: appDir, withIntermediateDirectories: true)
-            print("🔨 Adding Xcode project to \(projectName)...")
-            try AppTemplate(
-                targetName: projectName,
-                projectDir: appDir,
-                corePackageName: coreName
-            ).generate()
-            subPackages.append(projectName)
-        }
-
-        // CLI sub-package
-        if cli {
-            let cliName = "\(projectName)CLI"
-            let cliDir = projectDir.appendingPathComponent(cliName)
-            print("📁 Creating \"\(cliName)\"...")
-            try fm.createDirectory(at: cliDir, withIntermediateDirectories: true)
-            print("📦 Adding CLI package to \(cliName)...")
-            try PackageSwiftGenerator(projectName: cliName, cli: true, corePackageName: coreName)
-                .generate(to: cliDir)
-            try CLITemplate(
-                targetName: cliName,
-                projectDir: cliDir
-            ).generate()
-            subPackages.append(cliName)
-        }
-
-        // Hummingbird sub-package (named Server)
-        if hummingbird {
-            let serverName = "\(projectName)Server"
-            let serverDir = projectDir.appendingPathComponent(serverName)
-            print("📁 Creating \"\(serverName)\"...")
-            try fm.createDirectory(at: serverDir, withIntermediateDirectories: true)
-            print("📦 Adding Hummingbird server package to \(serverName)...")
-            try PackageSwiftGenerator(projectName: serverName, hummingbird: true, corePackageName: coreName)
-                .generate(to: serverDir)
-            try HummingbirdTemplate(
-                targetName: serverName,
-                projectDir: serverDir
-            ).generate()
-            subPackages.append(serverName)
-        }
-
-        print("")
-        print("📦 Sub-packages created:")
-        for sub in subPackages {
-            print("   • \(sub)/")
-        }
-    }
-
-    // MARK: - Next steps
-
-    private func printNextSteps() {
+    private func printNextSteps(generator: ProjectGenerator) {
         print("")
         print("   cd \(projectName)")
 
-        if isMultiTarget {
+        if generator.isMultiTarget {
             if app {
                 print("   open \(projectName)/\(projectName).xcodeproj")
             }
@@ -243,60 +67,5 @@ struct Init: ParsableCommand {
                 print("   swift build")
             }
         }
-    }
-
-    // MARK: - README
-
-    private func writeREADME(to projectDir: URL) throws {
-        var lines = ["# \(projectName)", ""]
-
-        if isMultiTarget {
-            lines.append("A multi-package Swift project.")
-            lines.append("")
-            lines.append("## Packages")
-            lines.append("")
-            lines.append("- `\(projectName)Core/` — shared library")
-            if app { lines.append("- `\(projectName)/` — SwiftUI application") }
-            if cli { lines.append("- `\(projectName)CLI/` — command-line tool") }
-            if hummingbird { lines.append("- `\(projectName)Server/` — Hummingbird HTTP server") }
-        } else if app {
-            lines.append("A SwiftUI application.")
-        } else if cli {
-            lines.append("A Swift command-line tool.")
-        } else if hummingbird {
-            lines.append("A Hummingbird server application.")
-        } else {
-            lines.append("A Swift package.")
-        }
-
-        lines.append("")
-        lines.append("## Requirements")
-        lines.append("")
-        lines.append("- Swift 6.2+")
-        lines.append("- macOS 15+")
-
-        let content = lines.joined(separator: "\n")
-        try content.write(
-            to: projectDir.appendingPathComponent("README.md"),
-            atomically: true, encoding: .utf8
-        )
-    }
-
-    // MARK: - .kolache.json
-
-    private func writeKolacheProject(to directory: URL) throws {
-        var flags: [String] = []
-        if package    { flags.append("package") }
-        if app        { flags.append("app") }
-        if hummingbird { flags.append("hummingbird") }
-        if cli        { flags.append("cli") }
-        if git        { flags.append("git") }
-
-        let manifest = KolacheProject(
-            projectName: projectName,
-            flags: flags,
-            createdAt: ISO8601DateFormatter().string(from: Date())
-        )
-        try manifest.save(to: directory)
     }
 }
