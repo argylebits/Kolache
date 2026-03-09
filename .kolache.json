@@ -4,13 +4,6 @@
     "cli",
     "git"
   ],
-  "managedFiles" : [
-    ".gitignore",
-    ".kolache.json",
-    "README.md"
-  ],
   "projectName" : "Kolache",
-  "templateRepo" : "",
-  "templateVersion" : "local",
   "version" : "1.0"
 }
