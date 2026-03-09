@@ -174,24 +174,24 @@ primary deliverable in most projects.
 
 ### Examples
 
-#### `kolache init Pinstripes --app --hummingbird --package --git`
+#### `kolache init Mosaic --app --hummingbird --package --git`
 
 ```
-Pinstripes/
-├── PinstripesCore/
+Mosaic/
+├── MosaicCore/
 │   ├── Package.swift              ← library, no external deps
-│   ├── Sources/PinstripesCore/
-│   └── Tests/PinstripesCoreTests/
-├── Pinstripes/
-│   ├── Pinstripes.xcodeproj       ← references ../PinstripesCore
-│   └── Pinstripes/
-│       ├── PinstripesApp.swift
+│   ├── Sources/MosaicCore/
+│   └── Tests/MosaicCoreTests/
+├── Mosaic/
+│   ├── Mosaic.xcodeproj       ← references ../MosaicCore
+│   └── Mosaic/
+│       ├── MosaicApp.swift
 │       ├── ContentView.swift
 │       └── Assets.xcassets/
-├── PinstripesServer/
-│   ├── Package.swift              ← Hummingbird + ../PinstripesCore
-│   ├── Sources/PinstripesServer/
-│   ├── Tests/PinstripesServerTests/
+├── MosaicServer/
+│   ├── Package.swift              ← Hummingbird + ../MosaicCore
+│   ├── Sources/MosaicServer/
+│   ├── Tests/MosaicServerTests/
 │   ├── Dockerfile
 │   └── .github/workflows/ci.yml
 ├── README.md
@@ -203,7 +203,7 @@ The server's `Package.swift` depends on Hummingbird and Core — nothing else:
 
 ```swift
 dependencies: [
-    .package(path: "../PinstripesCore"),
+    .package(path: "../MosaicCore"),
     .package(url: ".../hummingbird.git", from: "2.0.0"),
     .package(url: ".../swift-configuration.git", from: "1.0.0", ...),
 ]
@@ -224,7 +224,9 @@ Tools/
 │   ├── Package.swift              ← Hummingbird only
 │   ├── Sources/ToolsServer/
 │   ├── Tests/ToolsServerTests/
-│   └── Dockerfile
+│   ├── Dockerfile
+│   ├── .dockerignore
+│   └── .github/workflows/ci.yml
 ├── README.md
 └── .kolache.json
 ```
@@ -254,7 +256,7 @@ It records the project name, which flags were used, and when it was created.
 ```json
 {
   "version": "1.0",
-  "projectName": "Pinstripes",
+  "projectName": "Mosaic",
   "flags": ["package", "app", "hummingbird", "git"],
   "createdAt": "2026-03-02T21:38:07Z"
 }

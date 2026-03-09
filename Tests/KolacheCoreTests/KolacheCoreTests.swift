@@ -248,7 +248,7 @@ struct AppTemplateTests {
 
     @Test("Target name is used as-is, no suffix added")
     func targetNameNotSuffixed() {
-        let targetName = "Pinstripes"
+        let targetName = "Mosaic"
         let template = AppTemplate(
             targetName: targetName,
             projectDir: URL(fileURLWithPath: "/tmp")
@@ -516,7 +516,7 @@ struct MultiTargetWithPackageTests {
 
     @Test("--package --app: app sub-package uses project name, not suffixed with App")
     func appUsesProjectName() throws {
-        let projectName = "Pinstripes"
+        let projectName = "Mosaic"
         let names = Fixtures.ProjectNames(projectName)
         let root = try makeTempDir()
 
