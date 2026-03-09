@@ -23,12 +23,15 @@ struct Init: ParsableCommand {
     @Flag(name: .customLong("cli"), help: "Add a CLI executable with ArgumentParser.")
     var cli: Bool = false
 
-    @Flag(name: .customLong("git"), help: "Initialize a git repository with an initial commit.")
+    @Flag(name: .customLong("git"), help: "Initialize a git repository.")
     var git: Bool = false
+
+    @Flag(name: .customLong("force"), help: "Delete the existing project directory and recreate it from scratch. WARNING: This permanently deletes all files in the directory.")
+    var force: Bool = false
 
     // MARK: - Computed properties
 
-    /// Whether this generates multiple targets (auto-creates a Core library).
+    /// Whether this generates multiple targets.
     private var isMultiTarget: Bool {
         PackageSwiftGenerator.isMultiTarget(package: package, app: app, cli: cli, hummingbird: hummingbird)
     }
@@ -44,8 +47,13 @@ struct Init: ParsableCommand {
         let cwd = URL(fileURLWithPath: fm.currentDirectoryPath)
         let projectDir = cwd.appendingPathComponent(projectName)
 
-        guard !fm.fileExists(atPath: projectDir.path) else {
-            throw KolacheError.projectExists(projectName)
+        if fm.fileExists(atPath: projectDir.path) {
+            if force {
+                print("⚠️  --force: Deleting existing \"\(projectName)\" directory...")
+                try fm.removeItem(at: projectDir)
+            } else {
+                throw KolacheError.projectExists(projectName)
+            }
         }
 
         // Print notice for auto-detected multi-target

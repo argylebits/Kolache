@@ -2,6 +2,51 @@ import Foundation
 import Testing
 @testable import KolacheCore
 
+// MARK: - Test Fixtures
+
+/// Shared test configuration and naming conventions used across all tests.
+private enum Fixtures {
+    static let config = KolacheConfig(orgName: "Test Org", bundleIdPrefix: "com.test")
+
+    /// Generates consistent names for a project with the given base name.
+    struct ProjectNames {
+        let base: String
+        var core: String { "\(base)Core" }
+        var cli: String { "\(base)CLI" }
+        var server: String { "\(base)Server" }
+
+        init(_ base: String) { self.base = base }
+    }
+
+    /// Creates a PackageSwiftGenerator, generates to a temp dir, and returns the Package.swift content.
+    static func generatePackageSwift(
+        projectName: String,
+        cli: Bool = false,
+        hummingbird: Bool = false,
+        package: Bool = false,
+        corePackageName: String? = nil
+    ) throws -> (content: String, dir: URL) {
+        let gen = PackageSwiftGenerator(
+            projectName: projectName,
+            cli: cli,
+            hummingbird: hummingbird,
+            package: package,
+            corePackageName: corePackageName
+        )
+        let dir = try makeTempDir()
+        try gen.generate(to: dir)
+        let content = try readFile(dir, "Package.swift")
+        return (content, dir)
+    }
+
+    /// Writes a .gitignore and returns its content.
+    static func generateGitIgnore() throws -> String {
+        let dir = try makeTempDir()
+        try GitIgnore.write(to: dir)
+        return try readFile(dir, ".gitignore")
+    }
+}
+
 // MARK: - PackageSwiftGenerator Tests
 
 @Suite("PackageSwiftGenerator")
@@ -33,72 +78,66 @@ struct PackageSwiftGeneratorTests {
 
     @Test("Single --package generates library target with product")
     func singlePackage() throws {
-        let gen = PackageSwiftGenerator(projectName: "Foo", package: true)
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let projectName = "Foo"
+        let (content, _) = try Fixtures.generatePackageSwift(projectName: projectName, package: true)
 
         #expect(content.contains("swift-tools-version: 6.2"))
-        #expect(content.contains(#"name: "Foo""#))
+        #expect(content.contains("name: \"\(projectName)\""))
         #expect(content.contains(".target("))
-        #expect(content.contains(#"name: "FooTests""#))
-        #expect(content.contains(#".library(name: "Foo""#))
+        #expect(content.contains("name: \"\(projectName)Tests\""))
+        #expect(content.contains(".library(name: \"\(projectName)\""))
         #expect(!content.contains(".executableTarget("))
         #expect(!content.contains(".package(path:"))
     }
 
     @Test("Single --cli generates executable target with ArgumentParser")
     func singleCLI() throws {
-        let gen = PackageSwiftGenerator(projectName: "Bar", cli: true)
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let projectName = "Bar"
+        let (content, _) = try Fixtures.generatePackageSwift(projectName: projectName, cli: true)
 
         #expect(content.contains(".executableTarget("))
         #expect(content.contains("swift-argument-parser"))
-        #expect(content.contains(#"name: "Bar""#))
-        #expect(content.contains(#"name: "BarTests""#))
+        #expect(content.contains("name: \"\(projectName)\""))
+        #expect(content.contains("name: \"\(projectName)Tests\""))
         #expect(!content.contains(".package(path:"))
         #expect(!content.contains("hummingbird"))
     }
 
     @Test("Single --hummingbird generates server target with dependencies")
     func singleHummingbird() throws {
-        let gen = PackageSwiftGenerator(projectName: "Srv", hummingbird: true)
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let projectName = "Srv"
+        let (content, _) = try Fixtures.generatePackageSwift(projectName: projectName, hummingbird: true)
 
         #expect(content.contains(".executableTarget("))
         #expect(content.contains("hummingbird"))
         #expect(content.contains("swift-configuration"))
         #expect(content.contains("HummingbirdTesting"))
-        #expect(content.contains(#".tvOS(.v18)"#))
+        #expect(content.contains(".tvOS(.v18)"))
         #expect(!content.contains(".package(path:"))
         #expect(!content.contains("swift-argument-parser"))
     }
 
-    // MARK: - Sub-package output (with corePackageName)
+    // MARK: - With core dependency (when --package is also passed)
 
     @Test("CLI with core dep includes path reference and core target dep")
     func cliWithCoreDep() throws {
-        let gen = PackageSwiftGenerator(projectName: "BazCLI", cli: true, corePackageName: "BazCore")
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let names = Fixtures.ProjectNames("Baz")
+        let (content, _) = try Fixtures.generatePackageSwift(
+            projectName: names.cli, cli: true, corePackageName: names.core
+        )
 
-        #expect(content.contains(#".package(path: "../BazCore")"#))
-        #expect(content.contains(#""BazCore","#))
+        #expect(content.contains(".package(path: \"../\(names.core)\")"))
+        #expect(content.contains("\"\(names.core)\","))
         #expect(content.contains("swift-argument-parser"))
-        #expect(content.contains(#"name: "BazCLI""#))
+        #expect(content.contains("name: \"\(names.cli)\""))
     }
 
     @Test("CLI with core dep does NOT include Hummingbird dependencies")
     func cliWithCoreIsolation() throws {
-        let gen = PackageSwiftGenerator(projectName: "IsoCLI", cli: true, corePackageName: "IsoCore")
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let names = Fixtures.ProjectNames("Iso")
+        let (content, _) = try Fixtures.generatePackageSwift(
+            projectName: names.cli, cli: true, corePackageName: names.core
+        )
 
         #expect(!content.contains("hummingbird"))
         #expect(!content.contains("swift-configuration"))
@@ -107,23 +146,23 @@ struct PackageSwiftGeneratorTests {
 
     @Test("Hummingbird with core dep includes path reference and core target dep")
     func hummingbirdWithCoreDep() throws {
-        let gen = PackageSwiftGenerator(projectName: "BazServer", hummingbird: true, corePackageName: "BazCore")
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let names = Fixtures.ProjectNames("Baz")
+        let (content, _) = try Fixtures.generatePackageSwift(
+            projectName: names.server, hummingbird: true, corePackageName: names.core
+        )
 
-        #expect(content.contains(#".package(path: "../BazCore")"#))
-        #expect(content.contains(#""BazCore","#))
+        #expect(content.contains(".package(path: \"../\(names.core)\")"))
+        #expect(content.contains("\"\(names.core)\","))
         #expect(content.contains("hummingbird"))
         #expect(content.contains("swift-configuration"))
     }
 
     @Test("Hummingbird with core dep does NOT include ArgumentParser")
     func hummingbirdWithCoreIsolation() throws {
-        let gen = PackageSwiftGenerator(projectName: "IsoServer", hummingbird: true, corePackageName: "IsoCore")
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let names = Fixtures.ProjectNames("Iso")
+        let (content, _) = try Fixtures.generatePackageSwift(
+            projectName: names.server, hummingbird: true, corePackageName: names.core
+        )
 
         #expect(!content.contains("swift-argument-parser"))
         #expect(!content.contains("ArgumentParser"))
@@ -131,22 +170,20 @@ struct PackageSwiftGeneratorTests {
 
     @Test("Library with core dep includes path reference")
     func libraryWithCoreDep() throws {
-        let gen = PackageSwiftGenerator(projectName: "BazLib", package: true, corePackageName: "BazCore")
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let projectName = "BazLib"
+        let coreName = "BazCore"
+        let (content, _) = try Fixtures.generatePackageSwift(
+            projectName: projectName, package: true, corePackageName: coreName
+        )
 
-        #expect(content.contains(#".package(path: "../BazCore")"#))
-        #expect(content.contains(#""BazCore""#))
+        #expect(content.contains(".package(path: \"../\(coreName)\")"))
+        #expect(content.contains("\"\(coreName)\""))
         #expect(content.contains(".library("))
     }
 
-    @Test("Library without core dep has no path reference or dependencies section")
+    @Test("Library without core dep has no path reference or external dependencies")
     func libraryWithoutCoreDep() throws {
-        let gen = PackageSwiftGenerator(projectName: "Plain", package: true)
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let (content, _) = try Fixtures.generatePackageSwift(projectName: "Plain", package: true)
 
         #expect(!content.contains(".package(path:"))
         #expect(!content.contains("swift-argument-parser"))
@@ -155,10 +192,7 @@ struct PackageSwiftGeneratorTests {
 
     @Test("Hummingbird without core dep has no path reference")
     func hummingbirdWithoutCoreDep() throws {
-        let gen = PackageSwiftGenerator(projectName: "Solo", hummingbird: true)
-        let dir = try makeTempDir()
-        try gen.generate(to: dir)
-        let content = try readFile(dir, "Package.swift")
+        let (content, _) = try Fixtures.generatePackageSwift(projectName: "Solo", hummingbird: true)
 
         #expect(!content.contains(".package(path:"))
         #expect(content.contains("hummingbird"))
@@ -169,50 +203,85 @@ struct PackageSwiftGeneratorTests {
 
 @Suite("AppTemplate")
 struct AppTemplateTests {
-    private static let testConfig = KolacheConfig(orgName: "Test Org", bundleIdPrefix: "com.test")
 
     @Test("project.yml without core has no localPackages")
     func projectYMLWithoutCore() {
+        let targetName = "MyApp"
         let template = AppTemplate(
-            targetName: "MyApp",
+            targetName: targetName,
             projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Self.testConfig
+            config: Fixtures.config
         )
         let yml = template.projectYML
 
+        #expect(yml.contains("name: \(targetName)"))
+        #expect(yml.contains("path: \(targetName)"))
         #expect(!yml.contains("localPackages"))
-        #expect(!yml.contains("dependencies:"))
-        #expect(yml.contains("name: MyApp"))
-        #expect(yml.contains("path: MyApp"))
+        #expect(!yml.contains("- package:"))
     }
 
     @Test("project.yml with core includes localPackages and target dependency")
     func projectYMLWithCore() {
+        let targetName = "MyApp"
+        let coreName = "\(targetName)Core"
         let template = AppTemplate(
-            targetName: "MyApp",
+            targetName: targetName,
             projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Self.testConfig,
-            corePackageName: "MyAppCore"
+            config: Fixtures.config,
+            corePackageName: coreName
         )
         let yml = template.projectYML
 
         #expect(yml.contains("localPackages:"))
-        #expect(yml.contains("../MyAppCore"))
-        #expect(yml.contains("package: MyAppCore"))
+        #expect(yml.contains("../\(coreName)"))
+        #expect(yml.contains("package: \(coreName)"))
+    }
+
+    @Test("project.yml uses bundleIdPrefix from config")
+    func bundleIdFromConfig() {
+        let targetName = "MyApp"
+        let template = AppTemplate(
+            targetName: targetName,
+            projectDir: URL(fileURLWithPath: "/tmp"),
+            config: Fixtures.config
+        )
+        let yml = template.projectYML
+
+        #expect(yml.contains("bundleIdPrefix: \(Fixtures.config.bundleIdPrefix)"))
     }
 
     @Test("Target name is used as-is, no suffix added")
     func targetNameNotSuffixed() {
+        let targetName = "Pinstripes"
         let template = AppTemplate(
-            targetName: "Pinstripes",
+            targetName: targetName,
             projectDir: URL(fileURLWithPath: "/tmp"),
-            config: Self.testConfig
+            config: Fixtures.config
         )
         let yml = template.projectYML
 
-        #expect(yml.contains("name: Pinstripes"))
-        #expect(yml.contains("path: Pinstripes"))
-        #expect(!yml.contains("PinstripesApp"))
+        #expect(yml.contains("name: \(targetName)"))
+        #expect(yml.contains("path: \(targetName)"))
+        #expect(!yml.contains("\(targetName)App"))
+    }
+
+    @Test("App template generates ContentView and App entry point")
+    func appTemplateSourceFiles() throws {
+        let targetName = "TestApp"
+        let dir = try makeTempDir()
+        try AppTemplate(
+            targetName: targetName,
+            projectDir: dir,
+            config: Fixtures.config
+        ).generate()
+
+        let contentView = try readFile(dir, "\(targetName)/ContentView.swift")
+        #expect(contentView.contains("struct ContentView"))
+        #expect(contentView.contains("import SwiftUI"))
+
+        let appEntry = try readFile(dir, "\(targetName)/\(targetName)App.swift")
+        #expect(appEntry.contains("@main"))
+        #expect(appEntry.contains("struct \(targetName)App"))
     }
 }
 
@@ -220,69 +289,72 @@ struct AppTemplateTests {
 
 @Suite("Templates")
 struct TemplateTests {
-    private static let testConfig = KolacheConfig(orgName: "Test Org", bundleIdPrefix: "com.test")
 
     @Test("PackageTemplate generates source and test files")
     func packageTemplate() throws {
+        let targetName = "MyLib"
         let dir = try makeTempDir()
-        try PackageTemplate(targetName: "MyLib", projectDir: dir, config: Self.testConfig).generate()
+        try PackageTemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
 
-        let source = try readFile(dir, "Sources/MyLib/MyLib.swift")
-        #expect(source.contains("public struct MyLib"))
-        #expect(source.contains("Created by Test Org"))
+        let source = try readFile(dir, "Sources/\(targetName)/\(targetName).swift")
+        #expect(source.contains("public struct \(targetName)"))
+        #expect(source.contains("Created by \(Fixtures.config.orgName)"))
 
-        let test = try readFile(dir, "Tests/MyLibTests/MyLibTests.swift")
-        #expect(test.contains("@testable import MyLib"))
-        #expect(test.contains("struct MyLibTests"))
+        let test = try readFile(dir, "Tests/\(targetName)Tests/\(targetName)Tests.swift")
+        #expect(test.contains("@testable import \(targetName)"))
+        #expect(test.contains("struct \(targetName)Tests"))
     }
 
     @Test("CLITemplate generates source with ArgumentParser and test files")
     func cliTemplate() throws {
+        let targetName = "MyCLI"
         let dir = try makeTempDir()
-        try CLITemplate(targetName: "MyCLI", projectDir: dir, config: Self.testConfig).generate()
+        try CLITemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
 
-        let source = try readFile(dir, "Sources/MyCLI/MyCLI.swift")
+        let source = try readFile(dir, "Sources/\(targetName)/\(targetName).swift")
         #expect(source.contains("import ArgumentParser"))
         #expect(source.contains("@main"))
-        #expect(source.contains("struct MyCLI: ParsableCommand"))
+        #expect(source.contains("struct \(targetName): ParsableCommand"))
 
-        let test = try readFile(dir, "Tests/MyCLITests/MyCLITests.swift")
-        #expect(test.contains("@testable import MyCLI"))
+        let test = try readFile(dir, "Tests/\(targetName)Tests/\(targetName)Tests.swift")
+        #expect(test.contains("@testable import \(targetName)"))
     }
 
     @Test("PackageTemplate works for Core naming convention")
     func coreNamingConvention() throws {
+        let targetName = "FooCore"
         let dir = try makeTempDir()
-        try PackageTemplate(targetName: "FooCore", projectDir: dir, config: Self.testConfig).generate()
+        try PackageTemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
 
-        let source = try readFile(dir, "Sources/FooCore/FooCore.swift")
-        #expect(source.contains("public struct FooCore"))
+        let source = try readFile(dir, "Sources/\(targetName)/\(targetName).swift")
+        #expect(source.contains("public struct \(targetName)"))
 
-        let test = try readFile(dir, "Tests/FooCoreTests/FooCoreTests.swift")
-        #expect(test.contains("@testable import FooCore"))
+        let test = try readFile(dir, "Tests/\(targetName)Tests/\(targetName)Tests.swift")
+        #expect(test.contains("@testable import \(targetName)"))
     }
 
     @Test("HummingbirdTemplate generates server files, tests, Dockerfile, and CI")
     func hummingbirdTemplate() throws {
+        let targetName = "MySrv"
         let dir = try makeTempDir()
-        try HummingbirdTemplate(targetName: "MySrv", projectDir: dir, config: Self.testConfig).generate()
+        try HummingbirdTemplate(targetName: targetName, projectDir: dir, config: Fixtures.config).generate()
 
-        let app = try readFile(dir, "Sources/MySrv/App.swift")
+        let app = try readFile(dir, "Sources/\(targetName)/App.swift")
         #expect(app.contains("import Hummingbird"))
         #expect(app.contains("@main"))
 
-        let build = try readFile(dir, "Sources/MySrv/App+build.swift")
+        let build = try readFile(dir, "Sources/\(targetName)/App+build.swift")
         #expect(build.contains("func buildApplication"))
         #expect(build.contains("func buildRouter"))
 
-        let test = try readFile(dir, "Tests/MySrvTests/MySrvTests.swift")
+        let test = try readFile(dir, "Tests/\(targetName)Tests/\(targetName)Tests.swift")
         #expect(test.contains("import HummingbirdTesting"))
-        #expect(test.contains(#""http.host": "127.0.0.1""#))
-        #expect(test.contains(#""http.port": "0""#))
+        #expect(test.contains("\"http.host\": \"127.0.0.1\""))
+        #expect(test.contains("\"http.port\": \"0\""))
 
         let dockerfile = try readFile(dir, "Dockerfile")
         #expect(dockerfile.contains("FROM swift:6.2-noble"))
-        #expect(dockerfile.contains("ENTRYPOINT [\"./MySrv\"]"))
+        #expect(dockerfile.contains("ENTRYPOINT [\"./\(targetName)\"]"))
 
         let dockerignore = try readFile(dir, ".dockerignore")
         #expect(dockerignore.contains(".build"))
@@ -296,104 +368,98 @@ struct TemplateTests {
 
 @Suite("Integration — Single Target")
 struct SingleTargetIntegrationTests {
-    private static let testConfig = KolacheConfig(orgName: "Test Org", bundleIdPrefix: "com.test")
 
     @Test("Single --package: Package.swift and sources at root, no sub-directories")
     func singlePackage() throws {
+        let projectName = "MyLib"
         let dir = try makeTempDir()
-        try PackageSwiftGenerator(projectName: "MyLib", package: true).generate(to: dir)
-        try PackageTemplate(targetName: "MyLib", projectDir: dir, config: Self.testConfig).generate()
+        try PackageSwiftGenerator(projectName: projectName, package: true).generate(to: dir)
+        try PackageTemplate(targetName: projectName, projectDir: dir, config: Fixtures.config).generate()
 
         #expect(fileExists(dir, "Package.swift"))
-        #expect(fileExists(dir, "Sources/MyLib/MyLib.swift"))
-        #expect(fileExists(dir, "Tests/MyLibTests/MyLibTests.swift"))
-        #expect(!dirExists(dir, "MyLibCore"))
+        #expect(fileExists(dir, "Sources/\(projectName)/\(projectName).swift"))
+        #expect(fileExists(dir, "Tests/\(projectName)Tests/\(projectName)Tests.swift"))
+        #expect(!dirExists(dir, "\(projectName)Core"))
     }
 
     @Test("Single --cli: Package.swift and sources at root, no sub-directories")
     func singleCLI() throws {
+        let projectName = "MyCLI"
         let dir = try makeTempDir()
-        try PackageSwiftGenerator(projectName: "MyCLI", cli: true).generate(to: dir)
-        try CLITemplate(targetName: "MyCLI", projectDir: dir, config: Self.testConfig).generate()
+        try PackageSwiftGenerator(projectName: projectName, cli: true).generate(to: dir)
+        try CLITemplate(targetName: projectName, projectDir: dir, config: Fixtures.config).generate()
 
         #expect(fileExists(dir, "Package.swift"))
-        #expect(fileExists(dir, "Sources/MyCLI/MyCLI.swift"))
-        #expect(fileExists(dir, "Tests/MyCLITests/MyCLITests.swift"))
-        #expect(!dirExists(dir, "MyCLICore"))
-        #expect(!dirExists(dir, "MyCLICLI"))
+        #expect(fileExists(dir, "Sources/\(projectName)/\(projectName).swift"))
+        #expect(fileExists(dir, "Tests/\(projectName)Tests/\(projectName)Tests.swift"))
+        #expect(!dirExists(dir, "\(projectName)Core"))
+        #expect(!dirExists(dir, "\(projectName)CLI"))
     }
 
     @Test("Single --hummingbird: Package.swift, sources, Dockerfile at root, no sub-directories")
     func singleHummingbird() throws {
+        let projectName = "MySrv"
         let dir = try makeTempDir()
-        try PackageSwiftGenerator(projectName: "MySrv", hummingbird: true).generate(to: dir)
-        try HummingbirdTemplate(targetName: "MySrv", projectDir: dir, config: Self.testConfig).generate()
+        try PackageSwiftGenerator(projectName: projectName, hummingbird: true).generate(to: dir)
+        try HummingbirdTemplate(targetName: projectName, projectDir: dir, config: Fixtures.config).generate()
 
         #expect(fileExists(dir, "Package.swift"))
-        #expect(fileExists(dir, "Sources/MySrv/App.swift"))
-        #expect(fileExists(dir, "Sources/MySrv/App+build.swift"))
-        #expect(fileExists(dir, "Tests/MySrvTests/MySrvTests.swift"))
+        #expect(fileExists(dir, "Sources/\(projectName)/App.swift"))
+        #expect(fileExists(dir, "Sources/\(projectName)/App+build.swift"))
+        #expect(fileExists(dir, "Tests/\(projectName)Tests/\(projectName)Tests.swift"))
         #expect(fileExists(dir, "Dockerfile"))
         #expect(fileExists(dir, ".dockerignore"))
         #expect(fileExists(dir, ".github/workflows/ci.yml"))
-        #expect(!dirExists(dir, "MySrvCore"))
-        #expect(!dirExists(dir, "MySrvServer"))
+        #expect(!dirExists(dir, "\(projectName)Core"))
+        #expect(!dirExists(dir, "\(projectName)Server"))
     }
 }
 
-@Suite("Integration — Multi Target")
-struct MultiTargetIntegrationTests {
-    private static let testConfig = KolacheConfig(orgName: "Test Org", bundleIdPrefix: "com.test")
+@Suite("Integration — Multi Target with --package")
+struct MultiTargetWithPackageTests {
 
-    @Test("--cli --hummingbird: creates Core, CLI, Server sub-directories")
-    func cliHummingbirdStructure() throws {
+    @Test("--package --cli --hummingbird: creates Core, CLI, Server sub-directories")
+    func structure() throws {
+        let names = Fixtures.ProjectNames("Test")
         let root = try makeTempDir()
-        let coreName = "TestCore"
-        let cliName = "TestCLI"
-        let serverName = "TestServer"
 
-        // Core
-        let coreDir = root.appendingPathComponent(coreName)
-        try FileManager.default.createDirectory(at: coreDir, withIntermediateDirectories: true)
-        try PackageSwiftGenerator(projectName: coreName, package: true).generate(to: coreDir)
-        try PackageTemplate(targetName: coreName, projectDir: coreDir, config: Self.testConfig).generate()
-
-        // CLI
-        let cliDir = root.appendingPathComponent(cliName)
-        try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
-        try PackageSwiftGenerator(projectName: cliName, cli: true, corePackageName: coreName).generate(to: cliDir)
-        try CLITemplate(targetName: cliName, projectDir: cliDir, config: Self.testConfig).generate()
-
-        // Server
-        let serverDir = root.appendingPathComponent(serverName)
-        try FileManager.default.createDirectory(at: serverDir, withIntermediateDirectories: true)
-        try PackageSwiftGenerator(projectName: serverName, hummingbird: true, corePackageName: coreName).generate(to: serverDir)
-        try HummingbirdTemplate(targetName: serverName, projectDir: serverDir, config: Self.testConfig).generate()
-
-        // Verify structure
-        #expect(dirExists(root, coreName))
-        #expect(dirExists(root, cliName))
-        #expect(dirExists(root, serverName))
-        #expect(!fileExists(root, "Package.swift"))
-    }
-
-    @Test("--cli --hummingbird: each sub-package has its own Package.swift")
-    func separatePackageSwiftFiles() throws {
-        let root = try makeTempDir()
-        let coreName = "PkgCore"
-        let cliName = "PkgCLI"
-        let serverName = "PkgServer"
-
-        let coreDir = root.appendingPathComponent(coreName)
-        let cliDir = root.appendingPathComponent(cliName)
-        let serverDir = root.appendingPathComponent(serverName)
+        let coreDir = root.appendingPathComponent(names.core)
+        let cliDir = root.appendingPathComponent(names.cli)
+        let serverDir = root.appendingPathComponent(names.server)
         for d in [coreDir, cliDir, serverDir] {
             try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         }
 
-        try PackageSwiftGenerator(projectName: coreName, package: true).generate(to: coreDir)
-        try PackageSwiftGenerator(projectName: cliName, cli: true, corePackageName: coreName).generate(to: cliDir)
-        try PackageSwiftGenerator(projectName: serverName, hummingbird: true, corePackageName: coreName).generate(to: serverDir)
+        try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
+        try PackageTemplate(targetName: names.core, projectDir: coreDir, config: Fixtures.config).generate()
+
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try CLITemplate(targetName: names.cli, projectDir: cliDir, config: Fixtures.config).generate()
+
+        try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
+        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir, config: Fixtures.config).generate()
+
+        #expect(dirExists(root, names.core))
+        #expect(dirExists(root, names.cli))
+        #expect(dirExists(root, names.server))
+        #expect(!fileExists(root, "Package.swift"))
+    }
+
+    @Test("--package --cli --hummingbird: each sub-package has its own Package.swift with correct name")
+    func separatePackageSwiftFiles() throws {
+        let names = Fixtures.ProjectNames("Pkg")
+        let root = try makeTempDir()
+
+        let coreDir = root.appendingPathComponent(names.core)
+        let cliDir = root.appendingPathComponent(names.cli)
+        let serverDir = root.appendingPathComponent(names.server)
+        for d in [coreDir, cliDir, serverDir] {
+            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        }
+
+        try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
 
         #expect(fileExists(coreDir, "Package.swift"))
         #expect(fileExists(cliDir, "Package.swift"))
@@ -403,160 +469,276 @@ struct MultiTargetIntegrationTests {
         let cliContent = try readFile(cliDir, "Package.swift")
         let serverContent = try readFile(serverDir, "Package.swift")
 
-        #expect(coreContent.contains(#"name: "PkgCore""#))
-        #expect(cliContent.contains(#"name: "PkgCLI""#))
-        #expect(serverContent.contains(#"name: "PkgServer""#))
+        #expect(coreContent.contains("name: \"\(names.core)\""))
+        #expect(cliContent.contains("name: \"\(names.cli)\""))
+        #expect(serverContent.contains("name: \"\(names.server)\""))
     }
 
-    @Test("--cli --hummingbird: CLI has only ArgumentParser, Server has only Hummingbird")
+    @Test("--package --cli --hummingbird: CLI and Server each depend only on their own deps plus Core")
     func dependencyIsolation() throws {
+        let names = Fixtures.ProjectNames("Iso")
         let root = try makeTempDir()
-        let cliDir = root.appendingPathComponent("IsoCLI")
-        let serverDir = root.appendingPathComponent("IsoServer")
+        let cliDir = root.appendingPathComponent(names.cli)
+        let serverDir = root.appendingPathComponent(names.server)
         for d in [cliDir, serverDir] {
             try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         }
 
-        try PackageSwiftGenerator(projectName: "IsoCLI", cli: true, corePackageName: "IsoCore").generate(to: cliDir)
-        try PackageSwiftGenerator(projectName: "IsoServer", hummingbird: true, corePackageName: "IsoCore").generate(to: serverDir)
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
 
         let cliContent = try readFile(cliDir, "Package.swift")
         #expect(cliContent.contains("swift-argument-parser"))
+        #expect(cliContent.contains("\"\(names.core)\""))
         #expect(!cliContent.contains("hummingbird"))
         #expect(!cliContent.contains("swift-configuration"))
 
         let serverContent = try readFile(serverDir, "Package.swift")
         #expect(serverContent.contains("hummingbird"))
         #expect(serverContent.contains("swift-configuration"))
+        #expect(serverContent.contains("\"\(names.core)\""))
         #expect(!serverContent.contains("swift-argument-parser"))
     }
 
-    @Test("--cli --hummingbird: both sub-packages reference ../Core")
+    @Test("--package --cli --hummingbird: both sub-packages reference ../Core")
     func corePathReferences() throws {
+        let names = Fixtures.ProjectNames("Ref")
         let root = try makeTempDir()
-        let cliDir = root.appendingPathComponent("RefCLI")
-        let serverDir = root.appendingPathComponent("RefServer")
+        let cliDir = root.appendingPathComponent(names.cli)
+        let serverDir = root.appendingPathComponent(names.server)
         for d in [cliDir, serverDir] {
             try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         }
 
-        try PackageSwiftGenerator(projectName: "RefCLI", cli: true, corePackageName: "RefCore").generate(to: cliDir)
-        try PackageSwiftGenerator(projectName: "RefServer", hummingbird: true, corePackageName: "RefCore").generate(to: serverDir)
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
 
         let cliContent = try readFile(cliDir, "Package.swift")
         let serverContent = try readFile(serverDir, "Package.swift")
 
-        #expect(cliContent.contains(#".package(path: "../RefCore")"#))
-        #expect(serverContent.contains(#".package(path: "../RefCore")"#))
+        #expect(cliContent.contains(".package(path: \"../\(names.core)\")"))
+        #expect(serverContent.contains(".package(path: \"../\(names.core)\")"))
     }
 
-    @Test("App sub-package uses project name, not suffixed with App")
+    @Test("--package --app: app sub-package uses project name, not suffixed with App")
     func appUsesProjectName() throws {
-        let root = try makeTempDir()
         let projectName = "Pinstripes"
-        let coreName = "\(projectName)Core"
+        let names = Fixtures.ProjectNames(projectName)
+        let root = try makeTempDir()
 
-        // Simulate multi-target: app sub-dir uses project name
         let appDir = root.appendingPathComponent(projectName)
         try FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
 
         let template = AppTemplate(
             targetName: projectName,
             projectDir: appDir,
-            config: Self.testConfig,
-            corePackageName: coreName
+            config: Fixtures.config,
+            corePackageName: names.core
         )
 
-        // Verify the target name in project.yml is "Pinstripes" not "PinstripesApp"
         let yml = template.projectYML
-        #expect(yml.contains("name: Pinstripes"))
-        #expect(!yml.contains("name: PinstripesApp"))
-        #expect(yml.contains("path: Pinstripes"))
-        #expect(!yml.contains("PinstripesApp"))
+        #expect(yml.contains("name: \(projectName)"))
+        #expect(!yml.contains("name: \(projectName)App"))
+        #expect(yml.contains("path: \(projectName)"))
+        #expect(!yml.contains("\(projectName)App"))
 
-        // Verify the directory is at projectName, not projectNameApp
         #expect(dirExists(root, projectName))
         #expect(!dirExists(root, "\(projectName)App"))
     }
 
-    @Test("--app --cli --hummingbird: all four sub-directories created")
+    @Test("--package --app --cli --hummingbird: all four sub-directories with expected files")
     func allSubPackages() throws {
+        let names = Fixtures.ProjectNames("Full")
         let root = try makeTempDir()
-        let name = "Full"
-        let coreName = "\(name)Core"
 
-        let dirs = [coreName, name, "\(name)CLI", "\(name)Server"]
-        for d in dirs {
-            let dir = root.appendingPathComponent(d)
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let coreDir = root.appendingPathComponent(names.core)
+        let cliDir = root.appendingPathComponent(names.cli)
+        let serverDir = root.appendingPathComponent(names.server)
+        for d in [coreDir, cliDir, serverDir] {
+            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         }
 
-        // Core
-        let coreDir = root.appendingPathComponent(coreName)
-        try PackageSwiftGenerator(projectName: coreName, package: true).generate(to: coreDir)
-        try PackageTemplate(targetName: coreName, projectDir: coreDir, config: Self.testConfig).generate()
+        try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
+        try PackageTemplate(targetName: names.core, projectDir: coreDir, config: Fixtures.config).generate()
 
-        // CLI
-        let cliDir = root.appendingPathComponent("\(name)CLI")
-        try PackageSwiftGenerator(projectName: "\(name)CLI", cli: true, corePackageName: coreName).generate(to: cliDir)
-        try CLITemplate(targetName: "\(name)CLI", projectDir: cliDir, config: Self.testConfig).generate()
+        try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
+        try CLITemplate(targetName: names.cli, projectDir: cliDir, config: Fixtures.config).generate()
 
-        // Server
-        let serverDir = root.appendingPathComponent("\(name)Server")
-        try PackageSwiftGenerator(projectName: "\(name)Server", hummingbird: true, corePackageName: coreName).generate(to: serverDir)
-        try HummingbirdTemplate(targetName: "\(name)Server", projectDir: serverDir, config: Self.testConfig).generate()
+        try PackageSwiftGenerator(projectName: names.server, hummingbird: true, corePackageName: names.core).generate(to: serverDir)
+        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir, config: Fixtures.config).generate()
 
-        // Verify all sub-dirs exist with expected files
         #expect(fileExists(coreDir, "Package.swift"))
-        #expect(fileExists(coreDir, "Sources/FullCore/FullCore.swift"))
+        #expect(fileExists(coreDir, "Sources/\(names.core)/\(names.core).swift"))
         #expect(fileExists(cliDir, "Package.swift"))
-        #expect(fileExists(cliDir, "Sources/FullCLI/FullCLI.swift"))
+        #expect(fileExists(cliDir, "Sources/\(names.cli)/\(names.cli).swift"))
         #expect(fileExists(serverDir, "Package.swift"))
-        #expect(fileExists(serverDir, "Sources/FullServer/App.swift"))
+        #expect(fileExists(serverDir, "Sources/\(names.server)/App.swift"))
         #expect(fileExists(serverDir, "Dockerfile"))
     }
 
-    @Test("--cli --hummingbird without --package: no Core sub-directory")
-    func noPackageNoCoreDir() throws {
+    @Test("Multi-target has no Package.swift at project root")
+    func noRootPackageSwift() throws {
+        let names = Fixtures.ProjectNames("X")
         let root = try makeTempDir()
-        let cliName = "NoCLI"
-        let serverName = "NoServer"
+        let coreDir = root.appendingPathComponent(names.core)
+        try FileManager.default.createDirectory(at: coreDir, withIntermediateDirectories: true)
 
-        // CLI (no corePackageName)
-        let cliDir = root.appendingPathComponent(cliName)
+        try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
+
+        #expect(fileExists(coreDir, "Package.swift"))
+        #expect(!fileExists(root, "Package.swift"))
+    }
+}
+
+@Suite("Integration — Multi Target without --package")
+struct MultiTargetWithoutPackageTests {
+
+    @Test("--app without --package: app has no local package dependency")
+    func appWithoutCoreDep() throws {
+        let projectName = "TestApp"
+        let root = try makeTempDir()
+
+        let appDir = root.appendingPathComponent(projectName)
+        try FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
+
+        let template = AppTemplate(
+            targetName: projectName,
+            projectDir: appDir,
+            config: Fixtures.config,
+            corePackageName: nil
+        )
+        let yml = template.projectYML
+
+        #expect(yml.contains("name: \(projectName)"))
+        #expect(!yml.contains("localPackages:"))
+        #expect(!yml.contains("- package:"))
+    }
+
+    @Test("--cli --hummingbird without --package: no Core directory or core references")
+    func noCoreDirOrReferences() throws {
+        let names = Fixtures.ProjectNames("Solo")
+        let root = try makeTempDir()
+
+        let cliDir = root.appendingPathComponent(names.cli)
+        let serverDir = root.appendingPathComponent(names.server)
         try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
-        try PackageSwiftGenerator(projectName: cliName, cli: true).generate(to: cliDir)
-        try CLITemplate(targetName: cliName, projectDir: cliDir, config: Self.testConfig).generate()
-
-        // Server (no corePackageName)
-        let serverDir = root.appendingPathComponent(serverName)
         try FileManager.default.createDirectory(at: serverDir, withIntermediateDirectories: true)
-        try PackageSwiftGenerator(projectName: serverName, hummingbird: true).generate(to: serverDir)
-        try HummingbirdTemplate(targetName: serverName, projectDir: serverDir, config: Self.testConfig).generate()
+
+        try PackageSwiftGenerator(projectName: names.cli, cli: true).generate(to: cliDir)
+        try CLITemplate(targetName: names.cli, projectDir: cliDir, config: Fixtures.config).generate()
+
+        try PackageSwiftGenerator(projectName: names.server, hummingbird: true).generate(to: serverDir)
+        try HummingbirdTemplate(targetName: names.server, projectDir: serverDir, config: Fixtures.config).generate()
 
         // Verify no Core directory
-        #expect(!dirExists(root, "NoCore"))
-        #expect(dirExists(root, cliName))
-        #expect(dirExists(root, serverName))
+        #expect(!dirExists(root, names.core))
+        #expect(dirExists(root, names.cli))
+        #expect(dirExists(root, names.server))
 
         // Verify no core references in Package.swift files
         let cliContent = try readFile(cliDir, "Package.swift")
         let serverContent = try readFile(serverDir, "Package.swift")
         #expect(!cliContent.contains(".package(path:"))
         #expect(!serverContent.contains(".package(path:"))
+        #expect(!cliContent.contains(names.core))
+        #expect(!serverContent.contains(names.core))
+    }
+}
+
+// MARK: - GitIgnore Tests
+
+@Suite("GitIgnore")
+struct GitIgnoreTests {
+
+    @Test(".gitignore includes all expected entries and excludes third-party entries")
+    func gitIgnoreContent() throws {
+        let content = try Fixtures.generateGitIgnore()
+
+        // Entries Kolache introduces
+        #expect(content.contains(".DS_Store"))
+        #expect(content.contains(".build/"))
+        #expect(content.contains(".swiftpm/"))
+        #expect(content.contains("xcuserdata/"))
+        #expect(content.contains("DerivedData/"))
+        #expect(content.contains(".vscode/"))
+        #expect(content.contains(".cursor/"))
+        #expect(content.contains(".env"))
+        #expect(content.contains(".env.local"))
+
+        // Third-party entries we don't generate
+        #expect(!content.contains("Pods/"))
+        #expect(!content.contains("Carthage/"))
+        #expect(!content.contains("fastlane"))
     }
 
-    @Test("Multi-target has no Package.swift at project root")
-    func noRootPackageSwift() throws {
-        let root = try makeTempDir()
-        let coreDir = root.appendingPathComponent("XCore")
-        try FileManager.default.createDirectory(at: coreDir, withIntermediateDirectories: true)
+    @Test(".gitignore is written to the correct location")
+    func writesFile() throws {
+        let dir = try makeTempDir()
+        try GitIgnore.write(to: dir)
+        #expect(fileExists(dir, ".gitignore"))
+    }
+}
 
-        try PackageSwiftGenerator(projectName: "XCore", package: true).generate(to: coreDir)
+// MARK: - Git Tests
 
-        // Package.swift should be in coreDir, NOT in root
-        #expect(fileExists(coreDir, "Package.swift"))
-        #expect(!fileExists(root, "Package.swift"))
+@Suite("Git")
+struct GitTests {
+
+    @Test("Git.initialize creates a git repository")
+    func initializesRepo() throws {
+        let dir = try makeTempDir()
+        try Git.initialize(at: dir)
+        #expect(dirExists(dir, ".git"))
+    }
+
+    @Test("Git.initialize does not auto-commit")
+    func doesNotAutoCommit() throws {
+        let dir = try makeTempDir()
+
+        try "hello".write(
+            to: dir.appendingPathComponent("test.txt"),
+            atomically: true, encoding: .utf8
+        )
+
+        try Git.initialize(at: dir)
+
+        // git log should fail because there are no commits
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/git")
+        process.arguments = ["log", "--oneline"]
+        process.currentDirectoryURL = dir
+        process.standardOutput = Pipe()
+        process.standardError = Pipe()
+        try process.run()
+        process.waitUntilExit()
+
+        #expect(process.terminationStatus != 0)
+    }
+
+    @Test("Git.initialize does not auto-stage files")
+    func doesNotAutoStage() throws {
+        let dir = try makeTempDir()
+
+        try "hello".write(
+            to: dir.appendingPathComponent("test.txt"),
+            atomically: true, encoding: .utf8
+        )
+
+        try Git.initialize(at: dir)
+
+        let output = try Git.run(["diff", "--cached", "--name-only"], at: dir)
+        let trimmed = output.trimmingCharacters(in: .whitespacesAndNewlines)
+        #expect(trimmed.isEmpty)
+    }
+
+    @Test("Git.run throws on non-zero exit code")
+    func throwsOnFailure() throws {
+        let dir = try makeTempDir()
+
+        // Running git log in a non-repo directory should fail
+        #expect(throws: KolacheError.self) {
+            try Git.run(["log"], at: dir)
+        }
     }
 }
 
@@ -564,7 +746,8 @@ struct MultiTargetIntegrationTests {
 
 @Suite("KolacheProject")
 struct KolacheProjectTests {
-    @Test("Encodes and saves to disk")
+
+    @Test("Encodes and saves to disk with round-trip fidelity")
     func encodesAndSaves() throws {
         let dir = try makeTempDir()
         let project = KolacheProject(
@@ -577,15 +760,47 @@ struct KolacheProjectTests {
         let data = try Data(contentsOf: dir.appendingPathComponent(".kolache.json"))
         let decoded = try JSONDecoder().decode(KolacheProject.self, from: data)
 
-        #expect(decoded.projectName == "TestProj")
-        #expect(decoded.flags == ["cli", "git"])
+        #expect(decoded.projectName == project.projectName)
+        #expect(decoded.flags == project.flags)
+        #expect(decoded.createdAt == project.createdAt)
         #expect(decoded.version == "1.0")
-        #expect(decoded.createdAt == "2026-01-01T00:00:00Z")
+    }
+
+    @Test("Saves to .kolache.json file")
+    func savesCorrectFilename() throws {
+        let dir = try makeTempDir()
+        let project = KolacheProject(
+            projectName: "Test",
+            flags: [],
+            createdAt: "2026-01-01T00:00:00Z"
+        )
+        try project.save(to: dir)
+
+        #expect(fileExists(dir, ".kolache.json"))
+    }
+
+    @Test("Flags array reflects what was passed")
+    func flagsMatchInput() throws {
+        let dir = try makeTempDir()
+        let flags = ["package", "app", "hummingbird", "cli", "git"]
+        let project = KolacheProject(
+            projectName: "AllFlags",
+            flags: flags,
+            createdAt: "2026-01-01T00:00:00Z"
+        )
+        try project.save(to: dir)
+
+        let data = try Data(contentsOf: dir.appendingPathComponent(".kolache.json"))
+        let decoded = try JSONDecoder().decode(KolacheProject.self, from: data)
+
+        #expect(decoded.flags == flags)
+        #expect(decoded.flags.count == flags.count)
     }
 }
 
 @Suite("KolacheError")
 struct KolacheErrorTests {
+
     @Test("Error descriptions are populated")
     func errorDescriptions() {
         let cases: [KolacheError] = [
@@ -601,8 +816,23 @@ struct KolacheErrorTests {
 
     @Test("projectExists includes project name")
     func projectExistsMessage() {
-        let error = KolacheError.projectExists("MyApp")
-        #expect(error.errorDescription!.contains("MyApp"))
+        let projectName = "MyApp"
+        let error = KolacheError.projectExists(projectName)
+        #expect(error.errorDescription!.contains(projectName))
+    }
+
+    @Test("shellCommandFailed includes command name")
+    func shellCommandFailedMessage() {
+        let command = "git status"
+        let error = KolacheError.shellCommandFailed(command, 1)
+        #expect(error.errorDescription!.contains(command))
+    }
+
+    @Test("installFailed includes tool name")
+    func installFailedMessage() {
+        let toolName = "xcodegen"
+        let error = KolacheError.installFailed(toolName)
+        #expect(error.errorDescription!.contains(toolName))
     }
 }
 
