@@ -13,6 +13,7 @@ struct Kolache: ParsableCommand {
         version: "Kolache v\(kolacheVersion)",
         subcommands: [
             Init.self,
+            Recipe.self,
         ],
         defaultSubcommand: nil
     )
