@@ -20,19 +20,31 @@ private enum Fixtures {
     static func generatePackageSwift(
         projectName: String,
         cli: Bool = false,
-        hummingbird: Bool = false,
         package: Bool = false,
         corePackageName: String? = nil
     ) throws -> (content: String, dir: URL) {
         let gen = PackageSwiftGenerator(
             projectName: projectName,
             cli: cli,
-            hummingbird: hummingbird,
             package: package,
             corePackageName: corePackageName
         )
         let dir = try makeTempDir()
         try gen.generate(to: dir)
+        let content = try readFile(dir, "Package.swift")
+        return (content, dir)
+    }
+
+    /// Runs HummingbirdTemplateRunner to generate a project and returns the Package.swift content.
+    static func generateHummingbirdPackageSwift(
+        projectName: String
+    ) throws -> (content: String, dir: URL) {
+        let dir = try makeTempDir()
+        try HummingbirdTemplateRunner.run(
+            projectDir: dir,
+            packageName: projectName,
+            executableName: projectName
+        )
         let content = try readFile(dir, "Package.swift")
         return (content, dir)
     }
@@ -101,16 +113,13 @@ struct PackageSwiftGeneratorTests {
         #expect(!content.contains("hummingbird"))
     }
 
-    @Test("Single --hummingbird generates server target with dependencies")
+    @Test("Single --hummingbird generates server target with dependencies via configure.sh")
     func singleHummingbird() throws {
         let projectName = "Srv"
-        let (content, _) = try Fixtures.generatePackageSwift(projectName: projectName, hummingbird: true)
+        let (content, _) = try Fixtures.generateHummingbirdPackageSwift(projectName: projectName)
 
         #expect(content.contains(".executableTarget("))
         #expect(content.contains("hummingbird"))
-        #expect(content.contains("swift-configuration"))
-        #expect(content.contains("HummingbirdTesting"))
-        #expect(content.contains(".tvOS(.v18)"))
         #expect(!content.contains(".package(path:"))
         #expect(!content.contains("swift-argument-parser"))
     }
@@ -145,22 +154,31 @@ struct PackageSwiftGeneratorTests {
     @Test("Hummingbird with core dep includes path reference and core target dep")
     func hummingbirdWithCoreDep() throws {
         let names = Fixtures.ProjectNames("Baz")
-        let (content, _) = try Fixtures.generatePackageSwift(
-            projectName: names.hummingbird, hummingbird: true, corePackageName: names.core
+        let dir = try makeTempDir()
+        try HummingbirdTemplateRunner.run(
+            projectDir: dir,
+            packageName: names.hummingbird,
+            executableName: names.hummingbird
         )
+        try HummingbirdTemplate.patchPackageSwift(at: dir, corePackageName: names.core)
+        let content = try readFile(dir, "Package.swift")
 
         #expect(content.contains(".package(path: \"../\(names.core)\")"))
         #expect(content.contains("\"\(names.core)\","))
         #expect(content.contains("hummingbird"))
-        #expect(content.contains("swift-configuration"))
     }
 
     @Test("Hummingbird with core dep does NOT include ArgumentParser")
     func hummingbirdWithCoreIsolation() throws {
         let names = Fixtures.ProjectNames("Iso")
-        let (content, _) = try Fixtures.generatePackageSwift(
-            projectName: names.hummingbird, hummingbird: true, corePackageName: names.core
+        let dir = try makeTempDir()
+        try HummingbirdTemplateRunner.run(
+            projectDir: dir,
+            packageName: names.hummingbird,
+            executableName: names.hummingbird
         )
+        try HummingbirdTemplate.patchPackageSwift(at: dir, corePackageName: names.core)
+        let content = try readFile(dir, "Package.swift")
 
         #expect(!content.contains("swift-argument-parser"))
         #expect(!content.contains("ArgumentParser"))
@@ -190,7 +208,7 @@ struct PackageSwiftGeneratorTests {
 
     @Test("Hummingbird without core dep has no path reference")
     func hummingbirdWithoutCoreDep() throws {
-        let (content, _) = try Fixtures.generatePackageSwift(projectName: "Solo", hummingbird: true)
+        let (content, _) = try Fixtures.generateHummingbirdPackageSwift(projectName: "Solo")
 
         #expect(!content.contains(".package(path:"))
         #expect(content.contains("hummingbird"))
@@ -326,10 +344,6 @@ struct TemplateTests {
         let test = try readFile(dir, "Tests/\(targetName)Tests/\(targetName)Tests.swift")
         #expect(test.contains("@testable import \(targetName)"))
     }
-
-    // NOTE: The old inline template test was removed. HummingbirdTemplate now delegates
-    // to configure.sh which requires interactive input. Full integration testing requires
-    // the fork's non-interactive flags. For now, we test the patching logic below.
 
     @Test("patchPackageSwift adds core dependency to package and target dependencies")
     func patchWithCore() throws {
@@ -574,13 +588,14 @@ struct MultiTargetWithPackageTests {
         let coreDir = root.appendingPathComponent(names.core)
         let cliDir = root.appendingPathComponent(names.cli)
         let hummingbirdDir = root.appendingPathComponent(names.hummingbird)
-        for d in [coreDir, cliDir, hummingbirdDir] {
+        for d in [coreDir, cliDir] {
             try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
         }
 
         try PackageSwiftGenerator(projectName: names.core, package: true).generate(to: coreDir)
         try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
-        try PackageSwiftGenerator(projectName: names.hummingbird, hummingbird: true, corePackageName: names.core).generate(to: hummingbirdDir)
+        try HummingbirdTemplateRunner.run(projectDir: hummingbirdDir, packageName: names.hummingbird, executableName: names.hummingbird)
+        try HummingbirdTemplate.patchPackageSwift(at: hummingbirdDir, corePackageName: names.core)
 
         #expect(fileExists(coreDir, "Package.swift"))
         #expect(fileExists(cliDir, "Package.swift"))
@@ -601,22 +616,19 @@ struct MultiTargetWithPackageTests {
         let root = try makeTempDir()
         let cliDir = root.appendingPathComponent(names.cli)
         let hummingbirdDir = root.appendingPathComponent(names.hummingbird)
-        for d in [cliDir, hummingbirdDir] {
-            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        }
+        try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
 
         try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
-        try PackageSwiftGenerator(projectName: names.hummingbird, hummingbird: true, corePackageName: names.core).generate(to: hummingbirdDir)
+        try HummingbirdTemplateRunner.run(projectDir: hummingbirdDir, packageName: names.hummingbird, executableName: names.hummingbird)
+        try HummingbirdTemplate.patchPackageSwift(at: hummingbirdDir, corePackageName: names.core)
 
         let cliContent = try readFile(cliDir, "Package.swift")
         #expect(cliContent.contains("swift-argument-parser"))
         #expect(cliContent.contains("\"\(names.core)\""))
         #expect(!cliContent.contains("hummingbird"))
-        #expect(!cliContent.contains("swift-configuration"))
 
         let hummingbirdContent = try readFile(hummingbirdDir, "Package.swift")
         #expect(hummingbirdContent.contains("hummingbird"))
-        #expect(hummingbirdContent.contains("swift-configuration"))
         #expect(hummingbirdContent.contains("\"\(names.core)\""))
         #expect(!hummingbirdContent.contains("swift-argument-parser"))
     }
@@ -627,12 +639,11 @@ struct MultiTargetWithPackageTests {
         let root = try makeTempDir()
         let cliDir = root.appendingPathComponent(names.cli)
         let hummingbirdDir = root.appendingPathComponent(names.hummingbird)
-        for d in [cliDir, hummingbirdDir] {
-            try FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
-        }
+        try FileManager.default.createDirectory(at: cliDir, withIntermediateDirectories: true)
 
         try PackageSwiftGenerator(projectName: names.cli, cli: true, corePackageName: names.core).generate(to: cliDir)
-        try PackageSwiftGenerator(projectName: names.hummingbird, hummingbird: true, corePackageName: names.core).generate(to: hummingbirdDir)
+        try HummingbirdTemplateRunner.run(projectDir: hummingbirdDir, packageName: names.hummingbird, executableName: names.hummingbird)
+        try HummingbirdTemplate.patchPackageSwift(at: hummingbirdDir, corePackageName: names.core)
 
         let cliContent = try readFile(cliDir, "Package.swift")
         let hummingbirdContent = try readFile(hummingbirdDir, "Package.swift")
