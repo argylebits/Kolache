@@ -1,0 +1,110 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    name: macOS (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-26
+          - arch: x86_64
+            runner: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build release binary
+        run: swift build -c release --arch ${{ matrix.arch }}
+
+      - name: Package binary
+        run: |
+          BIN_PATH=$(swift build -c release --arch ${{ matrix.arch }} --show-bin-path)
+          mkdir -p staging
+          cp "$BIN_PATH/kolache" staging/kolache
+          chmod +x staging/kolache
+          tar czf kolache-macos-${{ matrix.arch }}.tar.gz -C staging kolache
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kolache-macos-${{ matrix.arch }}
+          path: kolache-macos-${{ matrix.arch }}.tar.gz
+
+  release:
+    name: Create Release
+    needs: [build-macos]
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        run: |
+          gh release create ${{ github.ref_name }} \
+            --title "${{ github.ref_name }}" \
+            --generate-notes \
+            artifacts/*.tar.gz
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Homebrew formula
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+
+          SHA_MACOS_ARM64=$(shasum -a 256 artifacts/kolache-macos-arm64.tar.gz | awk '{print $1}')
+          SHA_MACOS_X86=$(shasum -a 256 artifacts/kolache-macos-x86_64.tar.gz | awk '{print $1}')
+
+          FORMULA=$(cat <<RUBY
+          class Kolache < Formula
+            desc "Project scaffolding for Swift developers"
+            homepage "https://github.com/argylebits/Kolache"
+            version "${VERSION}"
+            license "MIT"
+
+            on_macos do
+              if Hardware::CPU.arm?
+                url "https://github.com/argylebits/Kolache/releases/download/v#{version}/kolache-macos-arm64.tar.gz"
+                sha256 "${SHA_MACOS_ARM64}"
+              elsif Hardware::CPU.intel?
+                url "https://github.com/argylebits/Kolache/releases/download/v#{version}/kolache-macos-x86_64.tar.gz"
+                sha256 "${SHA_MACOS_X86}"
+              end
+            end
+
+            def install
+              bin.install "kolache"
+            end
+
+            test do
+              assert_match "kolache", shell_output("#{bin}/kolache --help")
+            end
+          end
+          RUBY
+          )
+
+          EXISTING=$(gh api repos/argylebits/homebrew-tap/contents/Formula/kolache.rb --jq '.sha' 2>/dev/null || echo "")
+
+          if [ -n "$EXISTING" ]; then
+            echo "$FORMULA" | gh api -X PUT repos/argylebits/homebrew-tap/contents/Formula/kolache.rb \
+              -f message="Update kolache formula to ${VERSION}" \
+              -f content="$(echo "$FORMULA" | base64)" \
+              -f sha="$EXISTING"
+          else
+            echo "$FORMULA" | gh api -X PUT repos/argylebits/homebrew-tap/contents/Formula/kolache.rb \
+              -f message="Add kolache formula ${VERSION}" \
+              -f content="$(echo "$FORMULA" | base64)"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
