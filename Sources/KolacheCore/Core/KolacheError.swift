@@ -6,6 +6,8 @@ public enum KolacheError: LocalizedError {
     case installFailed(String)
     case xcodeGenFailed(String)
     case hummingbirdTemplateFailed(String)
+    case packageSwiftNotFound
+    case noExecutableTarget
 
     public var errorDescription: String? {
         switch self {
@@ -19,6 +21,10 @@ public enum KolacheError: LocalizedError {
             return "xcodegen generate failed:\n\(output)"
         case .hummingbirdTemplateFailed(let output):
             return "Hummingbird template failed:\n\(output)"
+        case .packageSwiftNotFound:
+            return "No Package.swift found in the current directory."
+        case .noExecutableTarget:
+            return "No executable target found in Package.swift."
         }
     }
 }

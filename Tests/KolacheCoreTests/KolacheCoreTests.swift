@@ -1172,6 +1172,100 @@ struct KolacheErrorTests {
     }
 }
 
+// MARK: - VersionPluginRecipe Tests
+
+@Suite("VersionPluginRecipe")
+struct VersionPluginRecipeTests {
+
+    @Test("Adds dependency and plugin to CLI Package.swift")
+    func addsToCliPackage() throws {
+        let (_, dir) = try Fixtures.generatePackageSwift(
+            projectName: "TestCLI", cli: true
+        )
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        try recipe.apply()
+
+        let content = try readFile(dir, "Package.swift")
+        #expect(content.contains("swift-version-plugin"))
+        #expect(content.contains(".plugin(name: \"VersionPlugin\", package: \"swift-version-plugin\")"))
+    }
+
+    @Test("Idempotent — does not double-add")
+    func idempotent() throws {
+        let (_, dir) = try Fixtures.generatePackageSwift(
+            projectName: "TestCLI", cli: true
+        )
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        try recipe.apply()
+        try recipe.apply()
+
+        let content = try readFile(dir, "Package.swift")
+        let depCount = content.components(separatedBy: "swift-version-plugin").count - 1
+        #expect(depCount == 2) // once in dependencies, once in plugins
+    }
+
+    @Test("Fails when no Package.swift exists")
+    func noPackageSwift() throws {
+        let dir = try makeTempDir()
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        #expect(throws: KolacheError.self) {
+            try recipe.apply()
+        }
+    }
+
+    @Test("Fails when no executable target")
+    func noExecutableTarget() throws {
+        let (_, dir) = try Fixtures.generatePackageSwift(
+            projectName: "TestLib", package: true
+        )
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        #expect(throws: KolacheError.self) {
+            try recipe.apply()
+        }
+    }
+
+    @Test("Creates plugins array when none exists")
+    func createsPluginsArray() throws {
+        let (_, dir) = try Fixtures.generatePackageSwift(
+            projectName: "TestCLI", cli: true
+        )
+
+        // Verify no plugins array exists before
+        let before = try readFile(dir, "Package.swift")
+        #expect(!before.contains("plugins:"))
+
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        try recipe.apply()
+
+        let after = try readFile(dir, "Package.swift")
+        #expect(after.contains("plugins:"))
+        #expect(after.contains(".plugin(name: \"VersionPlugin\", package: \"swift-version-plugin\")"))
+    }
+
+    @Test("Inserts into existing plugins array")
+    func insertsIntoExistingPlugins() throws {
+        let (_, dir) = try Fixtures.generatePackageSwift(
+            projectName: "TestCLI", cli: true
+        )
+
+        // Manually add a plugins array to the executable target
+        let packageURL = dir.appendingPathComponent("Package.swift")
+        var content = try String(contentsOf: packageURL, encoding: .utf8)
+        content = content.replacingOccurrences(
+            of: "            ]\n        ),",
+            with: "            ],\n            plugins: [\n                .plugin(name: \"SomeOtherPlugin\", package: \"other\"),\n            ]\n        ),"
+        )
+        try content.write(to: packageURL, atomically: true, encoding: .utf8)
+
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        try recipe.apply()
+
+        let after = try readFile(dir, "Package.swift")
+        #expect(after.contains("SomeOtherPlugin"))
+        #expect(after.contains(".plugin(name: \"VersionPlugin\", package: \"swift-version-plugin\")"))
+    }
+}
+
 // MARK: - Helpers
 
 /// Shared root for all test temp directories. Cleaned up at the start of each test run.
