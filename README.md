@@ -19,6 +19,15 @@ make a project ready to work in rather than just ready to compile.
 
 ## Install
 
+### Homebrew
+
+```bash
+brew tap argylebits/tap
+brew install kolache
+```
+
+### From source
+
 ```bash
 swift build -c release
 cp .build/release/kolache ~/bin/kolache

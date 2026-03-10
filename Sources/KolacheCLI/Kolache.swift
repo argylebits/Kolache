@@ -10,6 +10,7 @@ struct Kolache: ParsableCommand {
             It handles project structure, non-code resources, AI context files,
             git initialization, and everything SPM and XcodeGen don't cover.
             """,
+        version: "Kolache v\(kolacheVersion)",
         subcommands: [
             Init.self,
         ],
