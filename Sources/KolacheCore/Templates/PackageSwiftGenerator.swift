@@ -6,20 +6,17 @@ import Foundation
 public struct PackageSwiftGenerator {
     public let projectName: String
     public let cli: Bool
-    public let hummingbird: Bool
     public let package: Bool
     public var corePackageName: String? = nil
 
     public init(
         projectName: String,
         cli: Bool = false,
-        hummingbird: Bool = false,
         package: Bool = false,
         corePackageName: String? = nil
     ) {
         self.projectName = projectName
         self.cli = cli
-        self.hummingbird = hummingbird
         self.package = package
         self.corePackageName = corePackageName
     }
@@ -43,8 +40,6 @@ public struct PackageSwiftGenerator {
     private var packageSwift: String {
         if cli {
             return cliPackage
-        } else if hummingbird {
-            return hummingbirdPackage
         } else {
             return libraryPackage
         }
@@ -143,56 +138,4 @@ public struct PackageSwiftGenerator {
         """
     }
 
-    // MARK: - Hummingbird Package.swift
-
-    private var hummingbirdPackage: String {
-        var pkgDeps = [String]()
-        if let coreName = corePackageName {
-            pkgDeps.append("        .package(path: \"../\(coreName)\"),")
-        }
-        pkgDeps.append("        .package(url: \"https://github.com/hummingbird-project/hummingbird.git\", from: \"2.0.0\"),")
-        pkgDeps.append("        .package(url: \"https://github.com/apple/swift-configuration.git\", from: \"1.0.0\", traits: [.defaults, \"CommandLineArguments\"]),")
-
-        var tgtDeps = [String]()
-        if let coreName = corePackageName {
-            tgtDeps.append("                \"\(coreName)\",")
-        }
-        tgtDeps.append("                .product(name: \"Configuration\", package: \"swift-configuration\"),")
-        tgtDeps.append("                .product(name: \"Hummingbird\", package: \"hummingbird\"),")
-
-        return """
-        // swift-tools-version: 6.2
-        import PackageDescription
-
-        let package = Package(
-            name: "\(projectName)",
-            platforms: [
-                .macOS(.v15),
-                .iOS(.v18),
-                .tvOS(.v18),
-            ],
-            products: [
-                .executable(name: "\(projectName)", targets: ["\(projectName)"]),
-            ],
-            dependencies: [
-        \(pkgDeps.joined(separator: "\n"))
-            ],
-            targets: [
-                .executableTarget(
-                    name: "\(projectName)",
-                    dependencies: [
-        \(tgtDeps.joined(separator: "\n"))
-                    ]
-                ),
-                .testTarget(
-                    name: "\(projectName)Tests",
-                    dependencies: [
-                        .byName(name: "\(projectName)"),
-                        .product(name: "HummingbirdTesting", package: "hummingbird"),
-                    ]
-                ),
-            ]
-        )
-        """
-    }
 }

@@ -26,8 +26,8 @@ Names with spaces, hyphens, special characters, or Swift reserved words produce 
 
 ## Testing Gaps
 
-- **Temp directory cleanup**: Every test creates `kolache-tests-UUID` directories in `/tmp` and never removes them.
-- **No negative tests**: Empty project names, names with `/`, duplicate flags — all unvalidated and untested.
+- ~~**Temp directory cleanup**~~ — Consolidated under single `kolache-tests/` root, wiped at start of each run.
+- **No negative tests**: Empty project names, names with `/`, duplicate flags — blocked on #3 (name validation).
 
 ## Minor
 

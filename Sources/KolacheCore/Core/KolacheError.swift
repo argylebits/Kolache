@@ -5,6 +5,7 @@ public enum KolacheError: LocalizedError {
     case shellCommandFailed(String, Int32)
     case installFailed(String)
     case xcodeGenFailed(String)
+    case hummingbirdTemplateFailed(String)
 
     public var errorDescription: String? {
         switch self {
@@ -16,6 +17,8 @@ public enum KolacheError: LocalizedError {
             return "Failed to install \(name). Please install it manually and try again."
         case .xcodeGenFailed(let output):
             return "xcodegen generate failed:\n\(output)"
+        case .hummingbirdTemplateFailed(let output):
+            return "Hummingbird template failed:\n\(output)"
         }
     }
 }

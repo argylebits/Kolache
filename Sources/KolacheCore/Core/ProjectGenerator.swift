@@ -118,8 +118,6 @@ public struct ProjectGenerator {
             ).generate()
         } else if hummingbird {
             print("📦 Adding Hummingbird server...")
-            try PackageSwiftGenerator(projectName: projectName, hummingbird: true)
-                .generate(to: projectDir)
             try HummingbirdTemplate(
                 targetName: projectName,
                 projectDir: projectDir
@@ -187,18 +185,17 @@ public struct ProjectGenerator {
         }
 
         if hummingbird {
-            let serverName = "\(projectName)Server"
-            let serverDir = projectDir.appendingPathComponent(serverName)
-            print("📁 Creating \"\(serverName)\"...")
-            try fm.createDirectory(at: serverDir, withIntermediateDirectories: true)
-            print("📦 Adding Hummingbird server package to \(serverName)...")
-            try PackageSwiftGenerator(projectName: serverName, hummingbird: true, corePackageName: coreName)
-                .generate(to: serverDir)
+            let hummingbirdName = "\(projectName)Hummingbird"
+            let hummingbirdDir = projectDir.appendingPathComponent(hummingbirdName)
+            print("📁 Creating \"\(hummingbirdName)\"...")
+            try fm.createDirectory(at: hummingbirdDir, withIntermediateDirectories: true)
+            print("📦 Adding Hummingbird server package to \(hummingbirdName)...")
             try HummingbirdTemplate(
-                targetName: serverName,
-                projectDir: serverDir
+                targetName: hummingbirdName,
+                projectDir: hummingbirdDir,
+                corePackageName: coreName
             ).generate()
-            subPackages.append(serverName)
+            subPackages.append(hummingbirdName)
         }
 
         print("")
@@ -221,7 +218,7 @@ public struct ProjectGenerator {
             if package { lines.append("- `\(projectName)Core/` — shared library") }
             if app { lines.append("- `\(projectName)/` — SwiftUI application") }
             if cli { lines.append("- `\(projectName)CLI/` — command-line tool") }
-            if hummingbird { lines.append("- `\(projectName)Server/` — Hummingbird HTTP server") }
+            if hummingbird { lines.append("- `\(projectName)Hummingbird/` — Hummingbird HTTP server") }
         } else if app {
             lines.append("A SwiftUI application.")
         } else if cli {
