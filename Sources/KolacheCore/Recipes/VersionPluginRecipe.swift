@@ -95,6 +95,18 @@ public struct VersionPluginRecipe {
             if let depsCloseRange = findDependenciesClose(in: result, from: searchStart, before: targetEnd) {
                 let insertPoint = depsCloseRange.upperBound
                 result.insert(contentsOf: ",\n                plugins: [\n                    \(Self.pluginEntry),\n                ]", at: insertPoint)
+            } else {
+                // Bare target with no dependencies or plugins
+                // e.g. .executableTarget(\n            name: "Foo"\n        )
+                // Find the last non-whitespace character before the closing paren
+                var lastContent = result.index(before: targetEnd)
+                while lastContent > searchStart && result[lastContent].isWhitespace {
+                    lastContent = result.index(before: lastContent)
+                }
+                let insertAfter = result.index(after: lastContent)
+                // Detect indentation from the name: line
+                let indent = detectIndent(in: result, from: searchStart, before: targetEnd)
+                result.insert(contentsOf: ",\n\(indent)plugins: [\n\(indent)    \(Self.pluginEntry),\n\(indent)]", at: insertAfter)
             }
         }
 
@@ -121,6 +133,22 @@ public struct VersionPluginRecipe {
         }
 
         return content.endIndex
+    }
+
+    private func detectIndent(in content: String, from start: String.Index, before end: String.Index) -> String {
+        // Find the "name:" line and return its leading whitespace
+        let slice = content[start..<end]
+        if let nameRange = slice.range(of: "name:") {
+            // Walk backward from name: to find the start of the line
+            var lineStart = nameRange.lowerBound
+            while lineStart > content.startIndex {
+                let prev = content.index(before: lineStart)
+                if content[prev] == "\n" { break }
+                lineStart = prev
+            }
+            return String(content[lineStart..<nameRange.lowerBound])
+        }
+        return "            " // fallback: 12 spaces (3 levels of 4)
     }
 
     private func findDependenciesClose(in content: String, from start: String.Index, before end: String.Index) -> Range<String.Index>? {

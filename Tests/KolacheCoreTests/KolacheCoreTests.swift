@@ -1242,6 +1242,37 @@ struct VersionPluginRecipeTests {
         #expect(after.contains(".plugin(name: \"VersionPlugin\", package: \"swift-version-plugin\")"))
     }
 
+    @Test("Adds plugin to bare executable target from swift package init")
+    func bareExecutableTarget() throws {
+        let dir = try makeTempDir()
+        let packageSwift = """
+            // swift-tools-version: 6.2
+            import PackageDescription
+
+            let package = Package(
+                name: "TestCLI",
+                targets: [
+                    .executableTarget(
+                        name: "TestCLI"
+                    ),
+                ]
+            )
+            """
+        try packageSwift.write(
+            to: dir.appendingPathComponent("Package.swift"),
+            atomically: true,
+            encoding: .utf8
+        )
+
+        let recipe = VersionPluginRecipe(projectDirectory: dir)
+        try recipe.apply()
+
+        let after = try readFile(dir, "Package.swift")
+        #expect(after.contains("swift-version-plugin"))
+        #expect(after.contains(".plugin(name: \"VersionPlugin\", package: \"swift-version-plugin\")"))
+        #expect(after.contains("plugins:"))
+    }
+
     @Test("Inserts into existing plugins array")
     func insertsIntoExistingPlugins() throws {
         let (_, dir) = try Fixtures.generatePackageSwift(
