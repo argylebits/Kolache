@@ -1,8 +1,14 @@
 import Foundation
 
+struct ExitError: Error {}
+
 @main
 struct VersionGen {
     static func main() throws {
+        guard CommandLine.arguments.count > 1 else {
+            fputs("Usage: VersionGen <output-path>\n", stderr)
+            throw ExitError()
+        }
         let outputPath = CommandLine.arguments[1]
 
         let process = Process()
