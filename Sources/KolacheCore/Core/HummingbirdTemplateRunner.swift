@@ -1,8 +1,8 @@
 import Foundation
 
 public enum HummingbirdTemplateRunner {
-    private static let repoURL = "https://github.com/argylebits/template.git"
-    private static let tag = "2.3.1-argylebits.1"
+    private static let repoURL = "https://github.com/hummingbird-project/template.git"
+    private static let tag = "2.4.0"
 
     /// Run the Hummingbird template configure.sh non-interactively.
     public static func run(
@@ -51,7 +51,8 @@ public enum HummingbirdTemplateRunner {
             configureScript.path,
             projectDir.path,
             "--package-name", packageName,
-            "--executable-name", executableName
+            "--executable-name", executableName,
+            "--defaults"
         ]
         process.currentDirectoryURL = tempDir
         process.standardOutput = FileHandle.standardOutput
