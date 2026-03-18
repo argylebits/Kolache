@@ -42,7 +42,7 @@ automatically — no manual setup required.
 
 | Dependency | When | How |
 |---|---|---|
-| [Hummingbird template](https://github.com/argylebits/template) | `--hummingbird` flag | Shallow-cloned from GitHub at a pinned tag (`2.3.1-argylebits.1`) into a temp directory, then cleaned up after use |
+| [Hummingbird template](https://github.com/hummingbird-project/template) | `--hummingbird` flag | Shallow-cloned from GitHub at a pinned tag (`2.4.0`) into a temp directory, then cleaned up after use |
 | [XcodeGen](https://github.com/yonaskolb/XcodeGen) | `--app` flag | Auto-installed via [Homebrew](https://brew.sh) on first use if not already present |
 | git | `--git` flag, `--hummingbird` flag | Expected to be on `PATH` (ships with macOS / Xcode CLT) |
 
@@ -50,9 +50,9 @@ automatically — no manual setup required.
 
 The `--hummingbird` flag delegates project generation to the
 [Hummingbird project template](https://github.com/hummingbird-project/template)'s
-`configure.sh` script. Kolache uses a [fork](https://github.com/argylebits/template)
-that adds non-interactive flag support, allowing Kolache to pass `--package-name`
-and `--executable-name` without requiring terminal input.
+`configure.sh` script. The upstream template supports non-interactive flags
+(`--package-name` and `--executable-name`), allowing Kolache to pass project
+names without requiring terminal input.
 
 The template is cloned to a temporary directory, `configure.sh` runs with the
 appropriate flags, and the clone is removed. Nothing is installed permanently.
@@ -354,7 +354,7 @@ detection, and delegates to KolacheCore.
 | Generated packages     | macOS 15+ / iOS 18+ |
 | Generated Xcode apps   | iOS 26 / macOS 26   |
 | XcodeGen               | latest via Homebrew  |
-| Hummingbird template   | 2.3.1-argylebits.1  |
+| Hummingbird template   | 2.4.0               |
 
 ---
 
