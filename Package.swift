@@ -6,6 +6,7 @@ let package = Package(
     platforms: [.macOS(.v15)],
     dependencies: [
         .package(url: "https://github.com/apple/swift-argument-parser.git", from: "1.5.0"),
+        .package(url: "https://github.com/argylebits/swift-version-plugin.git", from: "1.0.0"),
     ],
     targets: [
         .target(name: "KolacheCore"),
@@ -17,20 +18,12 @@ let package = Package(
             ],
             path: "Sources/KolacheCLI",
             plugins: [
-                .plugin(name: "VersionPlugin"),
+                .plugin(name: "VersionPlugin", package: "swift-version-plugin"),
             ]
         ),
         .testTarget(
             name: "KolacheCoreTests",
             dependencies: ["KolacheCore"]
-        ),
-        .executableTarget(
-            name: "VersionGen"
-        ),
-        .plugin(
-            name: "VersionPlugin",
-            capability: .buildTool(),
-            dependencies: ["VersionGen"]
         ),
     ]
 )
